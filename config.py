@@ -1,0 +1,3 @@
+FORTIGATE_IP = "192.168.1.134"
+API_TOKEN = "q7jfg5b91sgqsp49hyGQ894k00psy6"
+VERIFY_SSL = False
