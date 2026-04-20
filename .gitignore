@@ -7,4 +7,4 @@ venv/
 env/
 .vscode/
 *.pdf
-chroma_db
+rag/chroma_db/
