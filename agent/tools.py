@@ -12,7 +12,9 @@ from modules.interfaces import list_interfaces
 from modules.routing import list_routes
 from modules.users import list_users
 from modules.backup import backup_config
+from modules.interfaces import list_interfaces, get_interface, update_interface_allowaccess
 from rag.retriever import search, search_errors
+from insights import run_analysis
 
 
 def _parse_input(input_data) -> dict:
@@ -35,6 +37,39 @@ def _parse_input(input_data) -> dict:
 
 
 # ── READ TOOLS ────────────────────────────────────────────
+
+@tool
+def tool_update_interface_access(name: str, allowaccess: str) -> str:
+    """
+    Update the management access protocols on a FortiGate network interface.
+    Use this to enable or disable HTTP, HTTPS, SSH, TELNET, PING on an interface.
+    Parameters:
+    - name        : interface name (e.g. port1, port2)
+    - allowaccess : space-separated list of allowed protocols
+                    Valid values: https http ssh telnet ping snmp
+                    Example to allow only HTTPS and SSH: "https ssh ping"
+                    Example to remove HTTP and TELNET: "https ssh ping"
+    """
+    try:
+        if not name or not allowaccess:
+            return "[ERROR] Both interface name and allowaccess are required."
+
+        # Validate allowed protocols
+        valid_protocols = {"https", "http", "ssh", "telnet", "ping", "snmp"}
+        requested = set(allowaccess.lower().strip().split())
+        invalid = requested - valid_protocols
+        if invalid:
+            return f"[ERROR] Invalid protocols: {invalid}. Valid: {valid_protocols}"
+
+        r = update_interface_allowaccess(name, allowaccess.lower().strip())
+        if r.get("status") == "success":
+            return (
+                f"[SUCCESS] Interface '{name}' management access updated.\n"
+                f"   Allowed protocols: {allowaccess.lower().strip()}"
+            )
+        return f"[ERROR] Failed to update interface: {r.get('cli_error', r)}"
+    except Exception as e:
+        return f"[ERROR] Exception updating interface: {str(e)}"
 
 @tool
 def tool_get_system_status(input: str = "") -> str:
@@ -294,6 +329,18 @@ def tool_search_knowledge(query: str) -> str:
     except Exception as e:
         return f"Error searching knowledge base: {str(e)}"
 
+@tool
+def tool_analyze_security(input: str = "") -> str:
+    """
+    Run a comprehensive security analysis of the FortiGate configuration.
+    Detects overly permissive policies, policy conflicts, disabled policies,
+    insecure interface settings, unused address objects, and resource issues.
+    Use this when the user asks to analyze, audit, or check the firewall security.
+    """
+    try:
+        return run_analysis()
+    except Exception as e:
+        return f"[ERROR] Security analysis failed: {str(e)}"
 
 # ── MASTER TOOL LIST ──────────────────────────────────────
 
@@ -310,4 +357,6 @@ ALL_TOOLS = [
     tool_delete_address,
     tool_backup_config,
     tool_search_knowledge,
+    tool_analyze_security,
+    tool_update_interface_access,
 ]

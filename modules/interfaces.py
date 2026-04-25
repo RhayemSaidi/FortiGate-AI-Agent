@@ -21,3 +21,15 @@ def set_interface_status(name, status="up"):
         "status": status
     }
     return put(f"/cmdb/system/interface/{name}", data)
+
+def update_interface_allowaccess(name: str, allowaccess: str):
+    """
+    Update the management access protocols on an interface.
+    allowaccess is a space-separated string of protocols.
+    Example: "https ssh ping"
+    Valid options: https http ssh telnet ping snmp
+    """
+    data = {
+        "allowaccess": allowaccess
+    }
+    return put(f"/cmdb/system/interface/{name}", data)

@@ -2,7 +2,9 @@ import sys
 import os
 import re
 import time
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from langchain_mistralai import ChatMistralAI
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage, AIMessage
@@ -13,6 +15,14 @@ from audit.logger import log_action, log_conversation
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import MISTRAL_API_KEY
 
+from validator import (
+    validate_create_policy,
+    validate_create_address,
+    validate_delete_address,
+    validate_update_interface_access,
+    ValidationResult
+)
+
 TOOL_MAP = {t.name: t for t in ALL_TOOLS}
 
 WRITE_TOOLS = {
@@ -20,6 +30,7 @@ WRITE_TOOLS = {
     "tool_create_address",
     "tool_delete_address",
     "tool_backup_config",
+    "tool_update_interface_access",
 }
 
 
@@ -136,6 +147,8 @@ def detect_intent(text: str):
         return ("tool_get_cpu_memory", {})
     if re.search(r'backup|save\s+config|export\s+config', t):
         return ("tool_backup_config", {})
+    if re.search(r'analyz|audit|security\s+check|find\s+risk|inspect|scan', t):
+        return ("tool_analyze_security", {})
 
     # ── Write commands — parameters extracted separately ──
     if re.search(r'(create|add|new|make)\s+(a\s+)?(firewall\s+)?polic', t):
@@ -146,6 +159,8 @@ def detect_intent(text: str):
         return ("tool_create_address", None)
     if re.search(r'(delete|remove)\s+(address|object)', t):
         return ("tool_delete_address", None)
+    if re.search(r'(disable|enable|update|change)\s+(http|telnet|ssh|https|management|access)', t):
+        return ("tool_update_interface_access", None)
 
     return None
 
@@ -174,6 +189,13 @@ def format_confirmation(tool_name: str, args: dict) -> str:
     elif tool_name == "tool_backup_config":
         lines.append("  You are about to BACKUP the FortiGate configuration.")
         lines.append("  The config file will be saved locally.")
+    elif tool_name == "tool_update_interface_access":
+        current = args.get('allowaccess', '').split()
+        lines.append("  You are about to UPDATE interface management access:")
+        lines.append(f"    Interface : {args.get('name', '?')}")
+        lines.append(f"    New access: {args.get('allowaccess', '?')}")
+        lines.append(f"    Protocols : {', '.join(current).upper()}")
+        lines.append("  All other protocols will be DISABLED.")
 
     lines.append("="*55)
     lines.append("  Type 'yes' to confirm or 'no' to cancel.")
@@ -182,24 +204,27 @@ def format_confirmation(tool_name: str, args: dict) -> str:
 
 
 def execute_tool(tool_name: str, tool_args: dict, user_input: str) -> str:
-    """Execute a tool, log it, return the result."""
+    """Execute a tool, log it, return the result. Never raises exceptions."""
     tool = TOOL_MAP.get(tool_name)
     if not tool:
-        return f"Error: tool '{tool_name}' not found."
+        return f"[ERROR] Tool '{tool_name}' not found."
 
     print(f"\n[Calling: {tool_name}]")
-    tool_result = tool.invoke(tool_args)
+    try:
+        tool_result = str(tool.invoke(tool_args))
+    except Exception as e:
+        tool_result = f"[ERROR] Tool execution failed: {str(e)}"
 
     log_action(
         action=tool_name.upper(),
         user_input=user_input,
         tool_called=tool_name,
         tool_input=str(tool_args),
-        result=str(tool_result),
-        status="error" if "[ERROR]" in str(tool_result) else "success"
+        result=tool_result,
+        status="error" if "[ERROR]" in tool_result else "success"
     )
 
-    return str(tool_result)
+    return tool_result
 
 
 def format_response(llm_plain, messages: list,
@@ -284,6 +309,30 @@ Rules:
         if match:
             return {"name": match.group(2)}
         return None
+    
+    elif tool_name == "tool_update_interface_access":
+        prompt = f"""Extract interface management access update parameters from:
+    "{user_input}"
+
+    Reply with ONLY valid JSON:
+    {{"name": "port1", "allowaccess": "https ssh ping"}}
+
+    Rules:
+    - name is the interface name (port1, port2, wan1 etc)
+    - allowaccess must only include safe protocols: https ssh ping
+    - NEVER include http or telnet in allowaccess
+    - if user says disable http/telnet, set allowaccess to "https ssh ping"
+    """
+        response = llm_plain.invoke([HumanMessage(content=prompt)])
+        try:
+            match = re.search(r'\{.*\}', response.content.strip(), re.DOTALL)
+            if match:
+                params = json.loads(match.group())
+                if params.get("name") and params.get("allowaccess"):
+                    return params
+        except Exception:
+            pass
+        return None
 
     return {}
 
@@ -313,7 +362,36 @@ def run_cli():
                 tool_name = pending_confirmation["name"]
                 tool_args = pending_confirmation["args"]
                 original_input = pending_confirmation["original_input"]
+                warnings_shown = pending_confirmation.get("warnings_shown", False)
 
+                # If warnings were shown and user said yes — skip revalidation
+                if not warnings_shown:
+                    # Run validation before executing
+                    validation = None
+                    if tool_name == "tool_create_policy":
+                        validation = validate_create_policy(tool_args)
+                    elif tool_name == "tool_create_address":
+                        validation = validate_create_address(tool_args)
+                    elif tool_name == "tool_delete_address":
+                        validation = validate_delete_address(tool_args)
+                    elif tool_name == "tool_update_interface_access":
+                        validation = validate_update_interface_access(tool_args)
+
+                    if validation:
+                        if not validation.valid:
+                            # Hard errors — block execution
+                            print(validation.format())
+                            print("\nAgent: Action blocked. Please fix the issues and try again.\n")
+                            pending_confirmation = None
+                            continue
+
+                        if validation.has_warnings_only():
+                            # Show warnings and ask for second confirmation
+                            print(validation.format())
+                            pending_confirmation["warnings_shown"] = True
+                            continue
+
+                # All clear — execute the action
                 tool_result = execute_tool(tool_name, tool_args, original_input)
                 print(f"[Result: {tool_result}]\n")
 
@@ -322,6 +400,7 @@ def run_cli():
                 )
                 print(f"Agent: {answer}\n")
                 log_conversation(original_input, answer)
+                pending_confirmation = None
 
             else:
                 print("\nAgent: Action cancelled. How else can I help you?\n")
@@ -333,9 +412,9 @@ def run_cli():
                     result="User cancelled",
                     status="cancelled"
                 )
-
-            pending_confirmation = None
+                pending_confirmation = None
             continue
+
 
         try:
             # ── Fast path: Python intent detection ───────
