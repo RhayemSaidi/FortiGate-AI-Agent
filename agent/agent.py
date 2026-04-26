@@ -21,20 +21,22 @@ from validator import (
     validate_create_policy,
     validate_delete_policy,
     validate_update_policy,
+    validate_enable_disable_policy,
     validate_move_policy,
     validate_create_address,
     validate_delete_address,
     validate_update_interface_access,
     validate_block_ip,
+    clear_cache,
     ValidationResult,
 )
 
 TOOL_MAP = {t.name: t for t in ALL_TOOLS}
 
-# Write tools require confirmation before execution
 WRITE_TOOLS = {
     "tool_create_policy",
     "tool_update_policy",
+    "tool_enable_disable_policy",
     "tool_delete_policy",
     "tool_move_policy",
     "tool_create_address",
@@ -44,32 +46,29 @@ WRITE_TOOLS = {
     "tool_backup_config",
 }
 
-# Map tool names to their validators
+# Map tool name → validator function
 VALIDATORS = {
-    "tool_create_policy":          validate_create_policy,
-    "tool_delete_policy":          validate_delete_policy,
-    "tool_update_policy":          validate_update_policy,
-    "tool_move_policy":            validate_move_policy,
-    "tool_create_address":         validate_create_address,
-    "tool_delete_address":         validate_delete_address,
+    "tool_create_policy":           validate_create_policy,
+    "tool_delete_policy":           validate_delete_policy,
+    "tool_update_policy":           validate_update_policy,
+    "tool_enable_disable_policy":   validate_enable_disable_policy,
+    "tool_move_policy":             validate_move_policy,
+    "tool_create_address":          validate_create_address,
+    "tool_delete_address":          validate_delete_address,
     "tool_update_interface_access": validate_update_interface_access,
-    "tool_block_ip":               validate_block_ip,
+    "tool_block_ip":                validate_block_ip,
 }
+
+# FIX: Maximum messages to keep in history to avoid context window overflow.
+# Always keeps SystemMessage + last MAX_HISTORY messages.
+MAX_HISTORY = 30
 
 
 # ══════════════════════════════════════════════════════════
-#  LLM setup
+#  LLM
 # ══════════════════════════════════════════════════════════
 
 def build_llms():
-    """
-    Two LLM instances:
-    - llm_tools : tools bound — selects which tool to call
-    - llm_plain : no tools  — formats responses only
-
-    Keeping them separate prevents Mistral from attempting
-    tool calls during formatting, which caused broken history.
-    """
     base = ChatMistralAI(
         model="mistral-small-latest",
         temperature=0,
@@ -79,7 +78,7 @@ def build_llms():
 
 
 # ══════════════════════════════════════════════════════════
-#  Retry helper
+#  Retry
 # ══════════════════════════════════════════════════════════
 
 def invoke_with_retry(llm, messages: list, max_retries: int = 3):
@@ -102,16 +101,29 @@ def invoke_with_retry(llm, messages: list, max_retries: int = 3):
 
 
 # ══════════════════════════════════════════════════════════
-#  History cleaner
+#  Message history management
 # ══════════════════════════════════════════════════════════
 
+def trim_messages(messages: list) -> list:
+    """
+    FIX: Keep SystemMessage + last MAX_HISTORY messages.
+    Prevents context window overflow in long sessions.
+    """
+    if len(messages) <= MAX_HISTORY + 1:
+        return messages
+    system = [m for m in messages if isinstance(m, SystemMessage)]
+    rest   = [m for m in messages if not isinstance(m, SystemMessage)]
+    return system + rest[-MAX_HISTORY:]
+
+
 def clean_message_history(messages: list) -> list:
-    orphaned_ids: set = set()
+    """Remove orphaned AIMessages with unmatched tool calls."""
+    orphaned: set = set()
     cleaned = []
     i = 0
     while i < len(messages):
         msg = messages[i]
-        if isinstance(msg, ToolMessage) and msg.tool_call_id in orphaned_ids:
+        if isinstance(msg, ToolMessage) and msg.tool_call_id in orphaned:
             i += 1
             continue
         if isinstance(msg, AIMessage) and msg.tool_calls:
@@ -122,7 +134,7 @@ def clean_message_history(messages: list) -> list:
                 if isinstance(messages[j], ToolMessage)
             }
             if not tool_ids.issubset(response_ids):
-                orphaned_ids.update(tool_ids)
+                orphaned.update(tool_ids)
                 i += 1
                 continue
         cleaned.append(msg)
@@ -131,58 +143,45 @@ def clean_message_history(messages: list) -> list:
 
 
 # ══════════════════════════════════════════════════════════
-#  Intent detection
-#
-#  ARCHITECTURE NOTE:
-#  The fast path handles only unambiguous READ commands
-#  and the analyze/backup triggers. Everything else — all
-#  write operations and complex queries — goes to Mistral
-#  with full tool context so it can reason properly.
-#
-#  The key architectural fix i chose: the old version was
-#  catching write commands here with rigid regex, then
-#  using extract_params() to guess parameters. Now Mistral
-#  handles writes end-to-end with full conversational context.
+#  Intent detection — fast path for unambiguous reads only
 # ══════════════════════════════════════════════════════════
 
 def detect_intent(text: str):
     """
-    Fast path for unambiguous READ commands only.
-    Returns (tool_name, args) or None (→ Mistral handles it).
+    Fast path for unambiguous READ commands and security scan.
+    FIX: removed ^ anchors so "please list all policies" also matches.
+    All write operations and complex queries go to Mistral.
     """
     t = text.lower().strip()
 
-    # ── Unambiguous list/read commands ────────────────────
-    # These are single-purpose commands with no parameters.
-    # Fast path saves an API call and is always reliable.
-
-    if re.search(r'^(list|show|get|display|all)\s+polic', t):
+    # FIX: no ^ anchor — matches anywhere in sentence
+    if re.search(r'(list|show|get|display|all)\s+(all\s+)?(firewall\s+)?(polic|rules)', t):
         return ("tool_list_policies", {})
-    if re.search(r'^(list|show|get|display|all)\s+address', t):
+    if re.search(r'(list|show|get|display|all)\s+(all\s+)?address', t):
         return ("tool_list_addresses", {})
-    if re.search(r'^(list|show|get|display|all)\s+interface', t):
+    if re.search(r'(list|show|get|display|all)\s+(all\s+)?interface', t):
         return ("tool_list_interfaces", {})
-    if re.search(r'^(list|show|get|display|all)\s+user', t):
+    if re.search(r'(list|show|get|display|all)\s+(all\s+)?user', t):
         return ("tool_list_users", {})
-    if re.search(r'^(list|show|get|display|all)\s+route', t):
+    if re.search(r'(list|show|get|display|all)\s+(all\s+)?route', t):
         return ("tool_list_routes", {})
-    if re.search(r'^(check\s+)?(system|device)\s+status', t):
+    if re.search(r'(system|device)\s+status|firmware\s+version', t):
         return ("tool_get_system_status", {})
-    if re.search(r'^(check\s+)?(cpu|memory|ram)\b', t):
+    if re.search(r'\b(check\s+)?(cpu|memory|ram)\b', t):
         return ("tool_get_cpu_memory", {})
-    if re.search(r'^(list|show|check)\s+vpn', t):
+    if re.search(r'(vpn\s+(status|tunnel)|ipsec\s+tunnel|show\s+vpn|list\s+vpn)', t):
         return ("tool_get_vpn_status", {})
-    if re.search(r'^(list|show|check)\s+session', t):
+    if re.search(r'(active\s+session|session\s+count|how\s+many\s+session)', t):
         return ("tool_get_active_sessions", {})
-
-    # ── Unambiguous intelligence triggers ─────────────────
-    if re.search(r'^(analyz|audit|security\s+check|scan\s+firewall|inspect)', t):
+    if re.search(r'\bbackup\b|\bsave\s+config\b', t):
+        return ("tool_backup_config", {})
+    if re.search(r'\b(analyz|audit|security\s+check|scan\s+firewall|inspect\s+firewall)\b', t):
         return ("tool_analyze_security", {})
 
-    # ── Everything else → Mistral ─────────────────────────
-    # Write operations, knowledge questions, complex queries,
-    # and anything ambiguous is handled by Mistral with full
-    # tool access and conversational context.
+    # FIX: blocked IP fast path — filter addresses with BLOCKED- prefix
+    if re.search(r'(show|list)\s+(blocked|block)', t):
+        return ("tool_list_addresses", {})
+
     return None
 
 
@@ -191,63 +190,77 @@ def detect_intent(text: str):
 # ══════════════════════════════════════════════════════════
 
 def format_confirmation(tool_name: str, args: dict) -> str:
-    lines = ["\n" + "=" * 55, "  CONFIRMATION REQUIRED", "=" * 55]
+    lines = ["\n" + "="*55, "  CONFIRMATION REQUIRED", "="*55]
 
     if tool_name == "tool_create_policy":
-        lines.append("  CREATE firewall policy:")
-        lines.append(f"    Name      : {args.get('name', '?')}")
-        lines.append(f"    Interfaces: {args.get('srcintf', '?')} -> {args.get('dstintf', '?')}")
-        lines.append(f"    Src Addr  : {args.get('srcaddr', 'all')}")
-        lines.append(f"    Dst Addr  : {args.get('dstaddr', 'all')}")
-        lines.append(f"    Service   : {args.get('service', 'ALL')}")
-        lines.append(f"    Action    : {args.get('action', 'accept').upper()}")
-
+        lines += [
+            "  CREATE firewall policy:",
+            f"    Name      : {args.get('name','?')}",
+            f"    Interfaces: {args.get('srcintf','?')} -> {args.get('dstintf','?')}",
+            f"    Src Addr  : {args.get('srcaddr','all')}",
+            f"    Dst Addr  : {args.get('dstaddr','all')}",
+            f"    Service   : {args.get('service','ALL')}",
+            f"    Action    : {args.get('action','accept').upper()}",
+        ]
     elif tool_name == "tool_update_policy":
         lines.append("  UPDATE firewall policy:")
-        lines.append(f"    Policy ID : {args.get('policy_id', '?')}")
-        for field in ("name", "action", "srcaddr", "dstaddr", "service", "status"):
-            if args.get(field):
-                lines.append(f"    {field:<10}: {args[field]}")
-
+        lines.append(f"    Policy ID : {args.get('policy_id','?')}")
+        for f in ("name","action","srcaddr","dstaddr","service","status"):
+            if args.get(f):
+                lines.append(f"    {f:<10}: {args[f]}")
+    elif tool_name == "tool_enable_disable_policy":
+        verb = "ENABLE" if args.get("status") == "enable" else "DISABLE"
+        lines += [
+            f"  {verb} firewall policy:",
+            f"    Policy ID : {args.get('policy_id','?')}",
+        ]
     elif tool_name == "tool_delete_policy":
-        lines.append("  WARNING — PERMANENTLY DELETE firewall policy:")
-        lines.append(f"    Policy ID : {args.get('policy_id', '?')}")
-        lines.append("  This cannot be undone.")
-
+        lines += [
+            "  WARNING — PERMANENTLY DELETE policy:",
+            f"    Policy ID : {args.get('policy_id','?')}",
+            "  This cannot be undone.",
+        ]
     elif tool_name == "tool_move_policy":
-        lines.append("  REORDER firewall policy:")
-        lines.append(f"    Move policy ID {args.get('policy_id', '?')} "
-                     f"{args.get('move_action', '?')} "
-                     f"policy ID {args.get('neighbor_id', '?')}")
-        lines.append("  This changes which rule takes precedence.")
-
+        lines += [
+            "  REORDER firewall policy:",
+            f"    Move policy ID {args.get('policy_id','?')} "
+            f"{args.get('move_action','?')} "
+            f"policy ID {args.get('neighbor_id','?')}",
+            "  This changes which rule takes precedence.",
+        ]
     elif tool_name == "tool_create_address":
-        lines.append("  CREATE address object:")
-        lines.append(f"    Name   : {args.get('name', '?')}")
-        lines.append(f"    Subnet : {args.get('subnet', '?')}")
-
+        lines += [
+            "  CREATE address object:",
+            f"    Name   : {args.get('name','?')}",
+            f"    Subnet : {args.get('subnet','?')}",
+        ]
     elif tool_name == "tool_delete_address":
-        lines.append("  WARNING — DELETE address object:")
-        lines.append(f"    Name : {args.get('name', '?')}")
-        lines.append("  This cannot be undone.")
-
+        lines += [
+            "  WARNING — DELETE address object:",
+            f"    Name : {args.get('name','?')}",
+            "  This cannot be undone.",
+        ]
     elif tool_name == "tool_update_interface_access":
-        lines.append("  UPDATE interface management access:")
-        lines.append(f"    Interface : {args.get('name', '?')}")
-        lines.append(f"    Allow     : {args.get('allowaccess', '?').upper()}")
-        lines.append("  All other protocols will be DISABLED.")
-
+        lines += [
+            "  UPDATE interface management access:",
+            f"    Interface : {args.get('name','?')}",
+            f"    Allow     : {args.get('allowaccess','?').upper()}",
+            "  All other protocols will be DISABLED.",
+        ]
     elif tool_name == "tool_block_ip":
-        lines.append("  BLOCK IP address:")
-        lines.append(f"    IP        : {args.get('ip_address', '?')}")
-        lines.append(f"    Direction : {args.get('direction', 'both')}")
-        lines.append("  Creates deny policy(ies) — can be reversed by deleting them.")
-
+        lines += [
+            "  BLOCK IP address:",
+            f"    IP        : {args.get('ip_address','?')}",
+            f"    Direction : {args.get('direction','both')}",
+            "  Creates deny policy(ies) — reversible by deleting them.",
+        ]
     elif tool_name == "tool_backup_config":
-        lines.append("  BACKUP FortiGate configuration.")
-        lines.append("  Config file will be saved locally with timestamp.")
+        lines += [
+            "  BACKUP FortiGate configuration.",
+            "  Config saved locally with timestamp.",
+        ]
 
-    lines += ["=" * 55, "  Type 'yes' to confirm or 'no' to cancel.", "=" * 55]
+    lines += ["="*55, "  Type 'yes' to confirm or 'no' to cancel.", "="*55]
     return "\n".join(lines)
 
 
@@ -256,7 +269,7 @@ def format_confirmation(tool_name: str, args: dict) -> str:
 # ══════════════════════════════════════════════════════════
 
 def execute_tool(tool_name: str, tool_args: dict, user_input: str) -> str:
-    """Execute a tool safely — never raises, always returns a string."""
+    """Execute a tool safely. Never raises — always returns a string."""
     tool = TOOL_MAP.get(tool_name)
     if not tool:
         return f"[ERROR] Tool '{tool_name}' not found."
@@ -266,6 +279,10 @@ def execute_tool(tool_name: str, tool_args: dict, user_input: str) -> str:
         tool_result = str(tool.invoke(tool_args))
     except Exception as exc:
         tool_result = f"[ERROR] {exc}"
+
+    # FIX: clear validator cache after every write so next validation is fresh
+    if tool_name in WRITE_TOOLS:
+        clear_cache()
 
     log_action(
         action=tool_name.upper(),
@@ -284,8 +301,7 @@ def execute_tool(tool_name: str, tool_args: dict, user_input: str) -> str:
 
 def format_response(llm_plain, messages: list,
                     tool_result: str, user_input: str) -> str:
-    """Format a tool result into natural language using the plain LLM."""
-    fmt_msgs = messages + [
+    fmt = messages + [
         HumanMessage(
             content=(
                 f"User asked: {user_input}\n\n"
@@ -295,25 +311,60 @@ def format_response(llm_plain, messages: list,
             )
         )
     ]
-    return invoke_with_retry(llm_plain, fmt_msgs).content
+    return invoke_with_retry(llm_plain, fmt).content
+
+
+# ══════════════════════════════════════════════════════════
+#  Post-execution verifier
+# ══════════════════════════════════════════════════════════
+
+def verify_after_execution(tool_name: str, tool_args: dict) -> str:
+    """
+    FIX: After critical write operations, verify the change actually
+    took effect on the FortiGate by reading the current state.
+    """
+    try:
+        from modules.policies import list_policies as _lp
+
+        if tool_name == "tool_create_policy" and "[SUCCESS]" in str(tool_args):
+            return ""  # ID already verified inside the tool
+
+        if tool_name in ("tool_delete_policy", "tool_move_policy",
+                         "tool_enable_disable_policy"):
+            r       = _lp()
+            results = r if isinstance(r, list) else r.get("results", [])
+            if not results:
+                return "\n[Verified: no policies remain on FortiGate]"
+            lines   = ["\n[Verified current policy order:]"]
+            for p in results:
+                src = (p.get("srcintf") or [{}])[0].get("name", "?")
+                dst = (p.get("dstintf") or [{}])[0].get("name", "?")
+                lines.append(
+                    f"  ID {p.get('policyid','?'):>3} | "
+                    f"{p.get('name','?'):<25} | "
+                    f"{p.get('action','?'):>6} | "
+                    f"{src} -> {dst}"
+                )
+            return "\n".join(lines)
+    except Exception:
+        pass
+    return ""
 
 
 # ══════════════════════════════════════════════════════════
 #  Confirmation handler
 # ══════════════════════════════════════════════════════════
 
-def handle_confirmation_yes(pending: dict, messages: list,
-                             llm_plain) -> tuple:
+def handle_confirmation_yes(pending: dict, messages: list, llm_plain):
     """
-    Handle a 'yes' response to a pending confirmation.
-    Returns (answer_str, should_continue, updated_pending).
+    Handle a confirmed action.
+    Returns (should_break_confirmation_loop, updated_pending).
     """
     tool_name      = pending["name"]
     tool_args      = pending["args"]
     original_input = pending["original_input"]
     warnings_shown = pending.get("warnings_shown", False)
 
-    # Run validation (skip if warnings already shown and user confirmed)
     if not warnings_shown:
         validator = VALIDATORS.get(tool_name)
         if validator:
@@ -321,17 +372,24 @@ def handle_confirmation_yes(pending: dict, messages: list,
 
             if not validation.valid:
                 print(validation.format())
-                print("\nAgent: Action blocked. Fix the issues above and try again.\n")
-                return None, True, None
+                print("\nAgent: Action blocked. Please start a new request with corrected details.\n")
+                # FIX: return False so the loop does NOT stay in confirmation mode
+                return False, None
 
             if validation.has_warnings_only():
                 print(validation.format())
                 pending["warnings_shown"] = True
-                return None, True, pending
+                # Stay in confirmation mode, waiting for second yes/no
+                return True, pending
 
-    # Execute
-    tool_result = execute_tool(tool_name, tool_args, original_input)
+    # Execute the action
+    tool_result  = execute_tool(tool_name, tool_args, original_input)
     print(f"[Result: {tool_result}]\n")
+
+    # Post-execution verification for critical operations
+    verification = verify_after_execution(tool_name, tool_result)
+    if verification:
+        print(verification)
 
     answer = format_response(llm_plain, messages, tool_result, original_input)
     print(f"Agent: {answer}\n")
@@ -340,7 +398,7 @@ def handle_confirmation_yes(pending: dict, messages: list,
     messages.append(AIMessage(content=answer))
     log_conversation(original_input, answer)
 
-    return answer, False, None
+    return False, None
 
 
 # ══════════════════════════════════════════════════════════
@@ -352,10 +410,10 @@ def run_cli():
     messages = [SystemMessage(content=SYSTEM_PROMPT)]
     pending_confirmation = None
 
-    print("\n" + "=" * 55)
+    print("\n" + "="*55)
     print("  FortiGate AI Agent")
     print("  Powered by Mistral AI + FortiOS Knowledge Base")
-    print("=" * 55)
+    print("="*55)
     print("Type 'exit' to quit.\n")
 
     while True:
@@ -367,15 +425,19 @@ def run_cli():
         if not user_input:
             continue
 
+        # FIX: trim history to avoid context overflow
+        messages = trim_messages(messages)
+
         # ── Confirmation response ─────────────────────────
         if pending_confirmation:
             if user_input.lower() == "yes":
-                _, should_continue, updated_pending = handle_confirmation_yes(
+                stay_in_confirmation, updated = handle_confirmation_yes(
                     pending_confirmation, messages, llm_plain
                 )
-                pending_confirmation = updated_pending
-                if should_continue:
+                pending_confirmation = updated
+                if stay_in_confirmation:
                     continue
+                # Action executed or blocked — exit confirmation mode
             else:
                 print("\nAgent: Action cancelled. How else can I help you?\n")
                 log_action(
@@ -404,9 +466,6 @@ def run_cli():
 
             else:
                 # ── Mistral path: all writes + complex queries ──
-                # Mistral sees full tool list and conversation history.
-                # It decides which tool to call based on natural language
-                # understanding — not rigid regex patterns.
                 messages.append(HumanMessage(content=user_input))
                 response = invoke_with_retry(llm_tools, messages)
                 messages.append(response)
@@ -420,7 +479,6 @@ def run_cli():
                         t_id   = tool_call["id"]
 
                         if t_name in WRITE_TOOLS:
-                            # Placeholder keeps history balanced
                             messages.append(ToolMessage(
                                 content="Awaiting user confirmation.",
                                 tool_call_id=t_id,
@@ -434,7 +492,6 @@ def run_cli():
                             }
                             break
 
-                        # Read tool — execute immediately
                         tool_result = execute_tool(t_name, t_args, user_input)
                         messages.append(ToolMessage(
                             content=tool_result or "No results.",
@@ -452,7 +509,6 @@ def run_cli():
                         log_conversation(user_input, answer)
 
                 else:
-                    # Pure conversation — no tool needed
                     print(f"\nAgent: {response.content}\n")
                     log_conversation(user_input, response.content)
 
