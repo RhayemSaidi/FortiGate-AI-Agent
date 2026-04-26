@@ -77,7 +77,7 @@ def add_documents_to_vectorstore(documents):
     Use this to add a single file after the initial build.
     """
     if not os.path.exists(CHROMA_DIR):
-        print("❌ Vector store not found. Run build_vectorstore() first.")
+        print(" Vector store not found. Run build_vectorstore() first.")
         return
 
     print(f"Adding {len(documents)} new chunks to existing vector store...")
@@ -87,4 +87,4 @@ def add_documents_to_vectorstore(documents):
         embedding_function=embeddings
     )
     vs.add_documents(documents)
-    print(f"✅ Done! {len(documents)} chunks added.")
+    print(f" Done! {len(documents)} chunks added.")

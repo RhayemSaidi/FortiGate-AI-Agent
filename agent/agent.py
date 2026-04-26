@@ -2,209 +2,261 @@ import sys
 import os
 import re
 import time
+import json
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from langchain_mistralai import ChatMistralAI
-from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage, AIMessage
-from tools import ALL_TOOLS
+from langchain_core.messages import (
+    HumanMessage, SystemMessage, ToolMessage, AIMessage
+)
+from tools  import ALL_TOOLS
 from prompt import SYSTEM_PROMPT
 from audit.logger import log_action, log_conversation
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import MISTRAL_API_KEY
 
 from validator import (
     validate_create_policy,
+    validate_delete_policy,
+    validate_update_policy,
+    validate_move_policy,
     validate_create_address,
     validate_delete_address,
     validate_update_interface_access,
-    ValidationResult
+    validate_block_ip,
+    ValidationResult,
 )
 
 TOOL_MAP = {t.name: t for t in ALL_TOOLS}
 
+# Write tools require confirmation before execution
 WRITE_TOOLS = {
     "tool_create_policy",
+    "tool_update_policy",
+    "tool_delete_policy",
+    "tool_move_policy",
     "tool_create_address",
     "tool_delete_address",
-    "tool_backup_config",
     "tool_update_interface_access",
+    "tool_block_ip",
+    "tool_backup_config",
 }
 
+# Map tool names to their validators
+VALIDATORS = {
+    "tool_create_policy":          validate_create_policy,
+    "tool_delete_policy":          validate_delete_policy,
+    "tool_update_policy":          validate_update_policy,
+    "tool_move_policy":            validate_move_policy,
+    "tool_create_address":         validate_create_address,
+    "tool_delete_address":         validate_delete_address,
+    "tool_update_interface_access": validate_update_interface_access,
+    "tool_block_ip":               validate_block_ip,
+}
+
+
+# ══════════════════════════════════════════════════════════
+#  LLM setup
+# ══════════════════════════════════════════════════════════
 
 def build_llms():
     """
     Two LLM instances:
-    - llm_tools : has tools bound, used ONLY for deciding which tool to call
-    - llm_plain : no tools, used ONLY for formatting responses
-    This prevents Mistral from calling tools during formatting
-    which was causing empty responses and broken history.
+    - llm_tools : tools bound — selects which tool to call
+    - llm_plain : no tools  — formats responses only
+
+    Keeping them separate prevents Mistral from attempting
+    tool calls during formatting, which caused broken history.
     """
     base = ChatMistralAI(
         model="mistral-small-latest",
         temperature=0,
-        api_key=MISTRAL_API_KEY
+        api_key=MISTRAL_API_KEY,
     )
-    llm_tools = base.bind_tools(ALL_TOOLS)
-    llm_plain = base
-    return llm_tools, llm_plain
+    return base.bind_tools(ALL_TOOLS), base
 
 
-def invoke_with_retry(llm, messages, max_retries=3):
-    """Retry on rate limit and server errors with exponential backoff."""
+# ══════════════════════════════════════════════════════════
+#  Retry helper
+# ══════════════════════════════════════════════════════════
+
+def invoke_with_retry(llm, messages: list, max_retries: int = 3):
     for attempt in range(max_retries):
         try:
-            time.sleep(0.5)
             return llm.invoke(messages)
-        except Exception as e:
-            error_str = str(e)
-            if "429" in error_str or "rate_limit" in error_str.lower():
+        except Exception as exc:
+            s = str(exc)
+            if "429" in s or "rate_limit" in s.lower():
                 wait = 2 * (attempt + 1)
                 print(f"\n[Rate limit — waiting {wait}s...]\n")
                 time.sleep(wait)
-            elif "503" in error_str or "502" in error_str or "unreachable" in error_str.lower():
+            elif "503" in s or "502" in s or "unreachable" in s.lower():
                 wait = 3 * (attempt + 1)
-                print(f"\n[Mistral server error — waiting {wait}s before retry...]\n")
+                print(f"\n[Server error — waiting {wait}s...]\n")
                 time.sleep(wait)
             else:
-                raise e
-    raise Exception("Mistral API unavailable after retries. Please try again in a moment.")
+                raise
+    raise Exception("Mistral API unavailable. Please try again.")
 
+
+# ══════════════════════════════════════════════════════════
+#  History cleaner
+# ══════════════════════════════════════════════════════════
 
 def clean_message_history(messages: list) -> list:
-    """
-    Remove orphaned AIMessages that have tool_calls but
-    no matching ToolMessage responses after them.
-    Mistral rejects requests with broken tool call order.
-    """
+    orphaned_ids: set = set()
     cleaned = []
     i = 0
     while i < len(messages):
         msg = messages[i]
+        if isinstance(msg, ToolMessage) and msg.tool_call_id in orphaned_ids:
+            i += 1
+            continue
         if isinstance(msg, AIMessage) and msg.tool_calls:
             tool_ids = {tc["id"] for tc in msg.tool_calls}
-            # Collect all ToolMessage IDs that follow this message
-            response_ids = set()
-            for j in range(i + 1, len(messages)):
-                if isinstance(messages[j], ToolMessage):
-                    response_ids.add(messages[j].tool_call_id)
-            # Only keep if all tool calls have responses
-            if tool_ids.issubset(response_ids):
-                cleaned.append(msg)
-            else:
-                # Skip this message and its orphaned ToolMessages
+            response_ids = {
+                messages[j].tool_call_id
+                for j in range(i + 1, len(messages))
+                if isinstance(messages[j], ToolMessage)
+            }
+            if not tool_ids.issubset(response_ids):
+                orphaned_ids.update(tool_ids)
                 i += 1
                 continue
-        else:
-            cleaned.append(msg)
+        cleaned.append(msg)
         i += 1
     return cleaned
 
 
+# ══════════════════════════════════════════════════════════
+#  Intent detection
+#
+#  ARCHITECTURE NOTE:
+#  The fast path handles only unambiguous READ commands
+#  and the analyze/backup triggers. Everything else — all
+#  write operations and complex queries — goes to Mistral
+#  with full tool context so it can reason properly.
+#
+#  The key architectural fix i chose: the old version was
+#  catching write commands here with rigid regex, then
+#  using extract_params() to guess parameters. Now Mistral
+#  handles writes end-to-end with full conversational context.
+# ══════════════════════════════════════════════════════════
+
 def detect_intent(text: str):
     """
-    Python-level intent detection.
-    Handles knowledge questions, read commands, AND write commands.
-    Write commands return (tool_name, None) — None means
-    parameters need to be extracted separately.
+    Fast path for unambiguous READ commands only.
+    Returns (tool_name, args) or None (→ Mistral handles it).
     """
     t = text.lower().strip()
 
-    # ── Knowledge questions — always use RAG ──────────────
-    knowledge_triggers = [
-        r'\bwhat\b', r'\bhow\b', r'\bwhy\b', r'\bexplain\b',
-        r'\bwhat is\b', r'\bwhat does\b', r'\bwhat are\b',
-        r'\bhow to\b', r'\bhow do\b', r'\bhow can\b',
-        r'\berror\s*-?\d+', r'\berror code\b',
-        r'\bbest practice\b', r'\brecommend\b',
-        r'\bvlan\b', r'\bvpn\b', r'\bnat\b',
-        r'\bospf\b', r'\bbgp\b', r'\bipsec\b',
-        r'\btroubleshoot\b', r'\bdiagnose\b',
-        # French
-        r'\bcomment\b', r'\bqu\'est\b', r'\bpourquoi\b',
-        r'\bexpliquer\b', r'\berreur\b', r'\bconfigurer\b',
-    ]
-    for pattern in knowledge_triggers:
-        if re.search(pattern, t):
-            return ("tool_search_knowledge", {"query": text})
+    # ── Unambiguous list/read commands ────────────────────
+    # These are single-purpose commands with no parameters.
+    # Fast path saves an API call and is always reliable.
 
-    # ── List / read commands ───────────────────────────────
-    if re.search(r'(list|show|get|display|all)\s+polic', t):
+    if re.search(r'^(list|show|get|display|all)\s+polic', t):
         return ("tool_list_policies", {})
-    if re.search(r'(list|show|get|display|all)\s+address', t):
+    if re.search(r'^(list|show|get|display|all)\s+address', t):
         return ("tool_list_addresses", {})
-    if re.search(r'(list|show|get|display|all)\s+interface', t):
+    if re.search(r'^(list|show|get|display|all)\s+interface', t):
         return ("tool_list_interfaces", {})
-    if re.search(r'(list|show|get|display|all)\s+user', t):
+    if re.search(r'^(list|show|get|display|all)\s+user', t):
         return ("tool_list_users", {})
-    if re.search(r'(list|show|get|display|all)\s+route', t):
+    if re.search(r'^(list|show|get|display|all)\s+route', t):
         return ("tool_list_routes", {})
-    if re.search(r'system\s+status|device\s+status|firmware', t):
+    if re.search(r'^(check\s+)?(system|device)\s+status', t):
         return ("tool_get_system_status", {})
-    if re.search(r'\b(cpu|memory|ram|resource)\b', t):
+    if re.search(r'^(check\s+)?(cpu|memory|ram)\b', t):
         return ("tool_get_cpu_memory", {})
-    if re.search(r'backup|save\s+config|export\s+config', t):
-        return ("tool_backup_config", {})
-    if re.search(r'analyz|audit|security\s+check|find\s+risk|inspect|scan', t):
+    if re.search(r'^(list|show|check)\s+vpn', t):
+        return ("tool_get_vpn_status", {})
+    if re.search(r'^(list|show|check)\s+session', t):
+        return ("tool_get_active_sessions", {})
+
+    # ── Unambiguous intelligence triggers ─────────────────
+    if re.search(r'^(analyz|audit|security\s+check|scan\s+firewall|inspect)', t):
         return ("tool_analyze_security", {})
 
-    # ── Write commands — parameters extracted separately ──
-    if re.search(r'(create|add|new|make)\s+(a\s+)?(firewall\s+)?polic', t):
-        return ("tool_create_policy", None)
-    if re.search(r'(block|deny|allow|permit)\s+\w+\s+(from|on|between)', t):
-        return ("tool_create_policy", None)
-    if re.search(r'(create|add|new)\s+(a\s+)?address', t):
-        return ("tool_create_address", None)
-    if re.search(r'(delete|remove)\s+(address|object)', t):
-        return ("tool_delete_address", None)
-    if re.search(r'(disable|enable|update|change)\s+(http|telnet|ssh|https|management|access)', t):
-        return ("tool_update_interface_access", None)
-
+    # ── Everything else → Mistral ─────────────────────────
+    # Write operations, knowledge questions, complex queries,
+    # and anything ambiguous is handled by Mistral with full
+    # tool access and conversational context.
     return None
 
+
+# ══════════════════════════════════════════════════════════
+#  Confirmation formatter
+# ══════════════════════════════════════════════════════════
+
 def format_confirmation(tool_name: str, args: dict) -> str:
-    """Show structured confirmation before any write operation."""
-    lines = ["\n" + "="*55]
-    lines.append("  CONFIRMATION REQUIRED")
-    lines.append("="*55)
+    lines = ["\n" + "=" * 55, "  CONFIRMATION REQUIRED", "=" * 55]
 
     if tool_name == "tool_create_policy":
-        lines.append("  You are about to CREATE a firewall policy:")
+        lines.append("  CREATE firewall policy:")
         lines.append(f"    Name      : {args.get('name', '?')}")
-        lines.append(f"    Source    : {args.get('srcintf', '?')} -> {args.get('dstintf', '?')}")
+        lines.append(f"    Interfaces: {args.get('srcintf', '?')} -> {args.get('dstintf', '?')}")
         lines.append(f"    Src Addr  : {args.get('srcaddr', 'all')}")
         lines.append(f"    Dst Addr  : {args.get('dstaddr', 'all')}")
         lines.append(f"    Service   : {args.get('service', 'ALL')}")
         lines.append(f"    Action    : {args.get('action', 'accept').upper()}")
+
+    elif tool_name == "tool_update_policy":
+        lines.append("  UPDATE firewall policy:")
+        lines.append(f"    Policy ID : {args.get('policy_id', '?')}")
+        for field in ("name", "action", "srcaddr", "dstaddr", "service", "status"):
+            if args.get(field):
+                lines.append(f"    {field:<10}: {args[field]}")
+
+    elif tool_name == "tool_delete_policy":
+        lines.append("  WARNING — PERMANENTLY DELETE firewall policy:")
+        lines.append(f"    Policy ID : {args.get('policy_id', '?')}")
+        lines.append("  This cannot be undone.")
+
+    elif tool_name == "tool_move_policy":
+        lines.append("  REORDER firewall policy:")
+        lines.append(f"    Move policy ID {args.get('policy_id', '?')} "
+                     f"{args.get('move_action', '?')} "
+                     f"policy ID {args.get('neighbor_id', '?')}")
+        lines.append("  This changes which rule takes precedence.")
+
     elif tool_name == "tool_create_address":
-        lines.append("  You are about to CREATE an address object:")
+        lines.append("  CREATE address object:")
         lines.append(f"    Name   : {args.get('name', '?')}")
         lines.append(f"    Subnet : {args.get('subnet', '?')}")
+
     elif tool_name == "tool_delete_address":
-        lines.append("  WARNING — You are about to DELETE an address object:")
+        lines.append("  WARNING — DELETE address object:")
         lines.append(f"    Name : {args.get('name', '?')}")
-        lines.append("  This action cannot be undone.")
-    elif tool_name == "tool_backup_config":
-        lines.append("  You are about to BACKUP the FortiGate configuration.")
-        lines.append("  The config file will be saved locally.")
+        lines.append("  This cannot be undone.")
+
     elif tool_name == "tool_update_interface_access":
-        current = args.get('allowaccess', '').split()
-        lines.append("  You are about to UPDATE interface management access:")
+        lines.append("  UPDATE interface management access:")
         lines.append(f"    Interface : {args.get('name', '?')}")
-        lines.append(f"    New access: {args.get('allowaccess', '?')}")
-        lines.append(f"    Protocols : {', '.join(current).upper()}")
+        lines.append(f"    Allow     : {args.get('allowaccess', '?').upper()}")
         lines.append("  All other protocols will be DISABLED.")
 
-    lines.append("="*55)
-    lines.append("  Type 'yes' to confirm or 'no' to cancel.")
-    lines.append("="*55)
+    elif tool_name == "tool_block_ip":
+        lines.append("  BLOCK IP address:")
+        lines.append(f"    IP        : {args.get('ip_address', '?')}")
+        lines.append(f"    Direction : {args.get('direction', 'both')}")
+        lines.append("  Creates deny policy(ies) — can be reversed by deleting them.")
+
+    elif tool_name == "tool_backup_config":
+        lines.append("  BACKUP FortiGate configuration.")
+        lines.append("  Config file will be saved locally with timestamp.")
+
+    lines += ["=" * 55, "  Type 'yes' to confirm or 'no' to cancel.", "=" * 55]
     return "\n".join(lines)
 
 
+# ══════════════════════════════════════════════════════════
+#  Tool executor
+# ══════════════════════════════════════════════════════════
+
 def execute_tool(tool_name: str, tool_args: dict, user_input: str) -> str:
-    """Execute a tool, log it, return the result. Never raises exceptions."""
+    """Execute a tool safely — never raises, always returns a string."""
     tool = TOOL_MAP.get(tool_name)
     if not tool:
         return f"[ERROR] Tool '{tool_name}' not found."
@@ -212,8 +264,8 @@ def execute_tool(tool_name: str, tool_args: dict, user_input: str) -> str:
     print(f"\n[Calling: {tool_name}]")
     try:
         tool_result = str(tool.invoke(tool_args))
-    except Exception as e:
-        tool_result = f"[ERROR] Tool execution failed: {str(e)}"
+    except Exception as exc:
+        tool_result = f"[ERROR] {exc}"
 
     log_action(
         action=tool_name.upper(),
@@ -221,187 +273,109 @@ def execute_tool(tool_name: str, tool_args: dict, user_input: str) -> str:
         tool_called=tool_name,
         tool_input=str(tool_args),
         result=tool_result,
-        status="error" if "[ERROR]" in tool_result else "success"
+        status="error" if "[ERROR]" in tool_result else "success",
     )
-
     return tool_result
 
 
+# ══════════════════════════════════════════════════════════
+#  Response formatter
+# ══════════════════════════════════════════════════════════
+
 def format_response(llm_plain, messages: list,
                     tool_result: str, user_input: str) -> str:
-    """
-    Use plain LLM (no tools) to format a tool result into
-    a clean natural language response. No tool calls possible here.
-    """
-    format_messages = messages + [
+    """Format a tool result into natural language using the plain LLM."""
+    fmt_msgs = messages + [
         HumanMessage(
-            content=f"The user asked: {user_input}\n\n"
-                    f"The system retrieved this data:\n{tool_result}\n\n"
-                    f"Present this information clearly and concisely to the user. "
-                    f"Do not call any tools. Just format and explain the results."
+            content=(
+                f"User asked: {user_input}\n\n"
+                f"System data:\n{tool_result}\n\n"
+                f"Present this clearly and concisely. "
+                f"Do not call any tools. Just explain the results."
+            )
         )
     ]
-    response = invoke_with_retry(llm_plain, format_messages)
-    return response.content
+    return invoke_with_retry(llm_plain, fmt_msgs).content
 
-def extract_params(tool_name: str, user_input: str, llm_plain) -> dict:
+
+# ══════════════════════════════════════════════════════════
+#  Confirmation handler
+# ══════════════════════════════════════════════════════════
+
+def handle_confirmation_yes(pending: dict, messages: list,
+                             llm_plain) -> tuple:
     """
-    Use plain LLM to extract structured parameters from user message.
-    Returns None if required parameters cannot be extracted.
+    Handle a 'yes' response to a pending confirmation.
+    Returns (answer_str, should_continue, updated_pending).
     """
-    import json
+    tool_name      = pending["name"]
+    tool_args      = pending["args"]
+    original_input = pending["original_input"]
+    warnings_shown = pending.get("warnings_shown", False)
 
-    if tool_name == "tool_create_policy":
-        prompt = f"""Extract firewall policy parameters from this request:
-"{user_input}"
+    # Run validation (skip if warnings already shown and user confirmed)
+    if not warnings_shown:
+        validator = VALIDATORS.get(tool_name)
+        if validator:
+            validation = validator(tool_args)
 
-Reply with ONLY a valid JSON object, nothing else:
-{{"name": "PolicyName", "srcintf": "port1", "dstintf": "port2", "srcaddr": "all", "dstaddr": "all", "service": "SSH", "action": "deny"}}
+            if not validation.valid:
+                print(validation.format())
+                print("\nAgent: Action blocked. Fix the issues above and try again.\n")
+                return None, True, None
 
-Rules:
-- action must be exactly "accept" or "deny"
-- if request says block/deny/restrict, use "deny"; otherwise use "accept"
-- service must be one of: ALL, HTTP, HTTPS, SSH, FTP, DNS, SMTP, RDP, PING
-- if not mentioned, srcaddr and dstaddr default to "all"
-- name must be a single word with no spaces (use hyphens if needed)
-"""
-        response = llm_plain.invoke([HumanMessage(content=prompt)])
-        try:
-            raw = response.content.strip()
-            match = re.search(r'\{.*\}', raw, re.DOTALL)
-            if match:
-                params = json.loads(match.group())
-                if params.get("name") and params.get("srcintf") and params.get("dstintf"):
-                    return params
-        except Exception:
-            pass
-        return None
+            if validation.has_warnings_only():
+                print(validation.format())
+                pending["warnings_shown"] = True
+                return None, True, pending
 
-    elif tool_name == "tool_create_address":
-        prompt = f"""Extract address object parameters from this request:
-"{user_input}"
+    # Execute
+    tool_result = execute_tool(tool_name, tool_args, original_input)
+    print(f"[Result: {tool_result}]\n")
 
-Reply with ONLY a valid JSON object, nothing else:
-{{"name": "ObjectName", "subnet": "192.168.1.10/32"}}
+    answer = format_response(llm_plain, messages, tool_result, original_input)
+    print(f"Agent: {answer}\n")
 
-Rules:
-- subnet must be in CIDR notation (e.g. 192.168.1.0/24 or 10.0.0.1/32)
-- name must be a single word with no spaces
-"""
-        response = llm_plain.invoke([HumanMessage(content=prompt)])
-        try:
-            raw = response.content.strip()
-            match = re.search(r'\{.*\}', raw, re.DOTALL)
-            if match:
-                params = json.loads(match.group())
-                if params.get("name") and params.get("subnet"):
-                    return params
-        except Exception:
-            pass
-        return None
+    messages.append(HumanMessage(content=original_input))
+    messages.append(AIMessage(content=answer))
+    log_conversation(original_input, answer)
 
-    elif tool_name == "tool_delete_address":
-        # Extract name directly from sentence
-        match = re.search(
-            r'(delete|remove)\s+(?:address\s+)?["\']?(\S+)["\']?',
-            user_input, re.IGNORECASE
-        )
-        if match:
-            return {"name": match.group(2)}
-        return None
-    
-    elif tool_name == "tool_update_interface_access":
-        prompt = f"""Extract interface management access update parameters from:
-    "{user_input}"
+    return answer, False, None
 
-    Reply with ONLY valid JSON:
-    {{"name": "port1", "allowaccess": "https ssh ping"}}
 
-    Rules:
-    - name is the interface name (port1, port2, wan1 etc)
-    - allowaccess must only include safe protocols: https ssh ping
-    - NEVER include http or telnet in allowaccess
-    - if user says disable http/telnet, set allowaccess to "https ssh ping"
-    """
-        response = llm_plain.invoke([HumanMessage(content=prompt)])
-        try:
-            match = re.search(r'\{.*\}', response.content.strip(), re.DOTALL)
-            if match:
-                params = json.loads(match.group())
-                if params.get("name") and params.get("allowaccess"):
-                    return params
-        except Exception:
-            pass
-        return None
-
-    return {}
+# ══════════════════════════════════════════════════════════
+#  Main CLI loop
+# ══════════════════════════════════════════════════════════
 
 def run_cli():
     llm_tools, llm_plain = build_llms()
     messages = [SystemMessage(content=SYSTEM_PROMPT)]
     pending_confirmation = None
 
-    print("\n" + "="*55)
+    print("\n" + "=" * 55)
     print("  FortiGate AI Agent")
     print("  Powered by Mistral AI + FortiOS Knowledge Base")
-    print("="*55)
+    print("=" * 55)
     print("Type 'exit' to quit.\n")
 
     while True:
         user_input = input("You: ").strip()
 
-        if user_input.lower() in ["exit", "quit"]:
+        if user_input.lower() in ("exit", "quit"):
             print("Goodbye!")
             break
         if not user_input:
             continue
 
-        # ── Handle pending confirmation ───────────────────
+        # ── Confirmation response ─────────────────────────
         if pending_confirmation:
             if user_input.lower() == "yes":
-                tool_name = pending_confirmation["name"]
-                tool_args = pending_confirmation["args"]
-                original_input = pending_confirmation["original_input"]
-                warnings_shown = pending_confirmation.get("warnings_shown", False)
-
-                # If warnings were shown and user said yes — skip revalidation
-                if not warnings_shown:
-                    # Run validation before executing
-                    validation = None
-                    if tool_name == "tool_create_policy":
-                        validation = validate_create_policy(tool_args)
-                    elif tool_name == "tool_create_address":
-                        validation = validate_create_address(tool_args)
-                    elif tool_name == "tool_delete_address":
-                        validation = validate_delete_address(tool_args)
-                    elif tool_name == "tool_update_interface_access":
-                        validation = validate_update_interface_access(tool_args)
-
-                    if validation:
-                        if not validation.valid:
-                            # Hard errors — block execution
-                            print(validation.format())
-                            print("\nAgent: Action blocked. Please fix the issues and try again.\n")
-                            pending_confirmation = None
-                            continue
-
-                        if validation.has_warnings_only():
-                            # Show warnings and ask for second confirmation
-                            print(validation.format())
-                            pending_confirmation["warnings_shown"] = True
-                            continue
-
-                # All clear — execute the action
-                tool_result = execute_tool(tool_name, tool_args, original_input)
-                print(f"[Result: {tool_result}]\n")
-
-                answer = format_response(
-                    llm_plain, messages, tool_result, original_input
+                _, should_continue, updated_pending = handle_confirmation_yes(
+                    pending_confirmation, messages, llm_plain
                 )
-                print(f"Agent: {answer}\n")
-                log_conversation(original_input, answer)
-                pending_confirmation = None
-
+                pending_confirmation = updated_pending
+                if should_continue:
+                    continue
             else:
                 print("\nAgent: Action cancelled. How else can I help you?\n")
                 log_action(
@@ -410,55 +384,17 @@ def run_cli():
                     tool_called=pending_confirmation["name"],
                     tool_input=str(pending_confirmation["args"]),
                     result="User cancelled",
-                    status="cancelled"
+                    status="cancelled",
                 )
                 pending_confirmation = None
             continue
 
-
+        # ── Fast path: unambiguous read commands ──────────
         try:
-            # ── Fast path: Python intent detection ───────
             intent = detect_intent(user_input)
 
             if intent:
                 tool_name, tool_args = intent
-
-                # Write operations need parameter extraction
-                if tool_name in WRITE_TOOLS and tool_args is None:
-                    tool_args = extract_params(tool_name, user_input, llm_plain)
-
-                    if tool_args is None:
-                        # Could not extract required parameters — ask user
-                        print("\nAgent: I need more details to complete this request.")
-                        if tool_name == "tool_create_policy":
-                            print("  Please provide: policy name, source interface,")
-                            print("  destination interface, service, and action (accept/deny).\n")
-                        elif tool_name == "tool_create_address":
-                            print("  Please provide: object name and subnet")
-                            print("  (e.g. 192.168.1.10/32).\n")
-                        elif tool_name == "tool_delete_address":
-                            print("  Please provide the exact name of the address to delete.\n")
-                        continue
-
-                    print(format_confirmation(tool_name, tool_args))
-                    pending_confirmation = {
-                        "name": tool_name,
-                        "args": tool_args,
-                        "original_input": user_input
-                    }
-                    continue
-
-                # Write operations with known args (e.g. backup)
-                if tool_name in WRITE_TOOLS:
-                    print(format_confirmation(tool_name, tool_args))
-                    pending_confirmation = {
-                        "name": tool_name,
-                        "args": tool_args,
-                        "original_input": user_input
-                    }
-                    continue
-
-                # Read tools and knowledge — execute immediately
                 tool_result = execute_tool(tool_name, tool_args, user_input)
                 answer = format_response(llm_plain, messages, tool_result, user_input)
                 messages.append(HumanMessage(content=user_input))
@@ -467,48 +403,47 @@ def run_cli():
                 log_conversation(user_input, answer)
 
             else:
-                # ── Mistral path: write operations ───────
-                # Only create/delete/backup reach here
+                # ── Mistral path: all writes + complex queries ──
+                # Mistral sees full tool list and conversation history.
+                # It decides which tool to call based on natural language
+                # understanding — not rigid regex patterns.
                 messages.append(HumanMessage(content=user_input))
                 response = invoke_with_retry(llm_tools, messages)
                 messages.append(response)
 
                 if response.tool_calls:
-                    all_tool_results = []
+                    all_results = []
 
                     for tool_call in response.tool_calls:
-                        tool_name = tool_call["name"]
-                        tool_args = tool_call["args"]
-                        tool_id = tool_call["id"]
+                        t_name = tool_call["name"]
+                        t_args = tool_call["args"]
+                        t_id   = tool_call["id"]
 
-                        if tool_name in WRITE_TOOLS:
-                            # Add placeholder ToolMessage to keep history valid
+                        if t_name in WRITE_TOOLS:
+                            # Placeholder keeps history balanced
                             messages.append(ToolMessage(
                                 content="Awaiting user confirmation.",
-                                tool_call_id=tool_id
+                                tool_call_id=t_id,
                             ))
-                            print(format_confirmation(tool_name, tool_args))
+                            print(format_confirmation(t_name, t_args))
                             pending_confirmation = {
-                                "name": tool_name,
-                                "args": tool_args,
-                                "id": tool_id,
-                                "original_input": user_input
+                                "name": t_name,
+                                "args": t_args,
+                                "id":   t_id,
+                                "original_input": user_input,
                             }
                             break
 
-                        # Read tool called by Mistral
-                        tool_result = execute_tool(
-                            tool_name, tool_args, user_input
-                        )
+                        # Read tool — execute immediately
+                        tool_result = execute_tool(t_name, t_args, user_input)
                         messages.append(ToolMessage(
                             content=tool_result or "No results.",
-                            tool_call_id=tool_id
+                            tool_call_id=t_id,
                         ))
-                        all_tool_results.append(tool_result)
+                        all_results.append(tool_result)
 
-                    # Format all results with plain LLM
-                    if not pending_confirmation and all_tool_results:
-                        combined = "\n\n".join(all_tool_results)
+                    if not pending_confirmation and all_results:
+                        combined = "\n\n".join(all_results)
                         answer = format_response(
                             llm_plain, messages, combined, user_input
                         )
@@ -517,25 +452,23 @@ def run_cli():
                         log_conversation(user_input, answer)
 
                 else:
-                    # Pure conversation
+                    # Pure conversation — no tool needed
                     print(f"\nAgent: {response.content}\n")
                     log_conversation(user_input, response.content)
 
-        except Exception as e:
-            error_str = str(e)
-            print(f"\nError: {error_str}\n")
-
-            if "3230" in error_str or "function calls" in error_str:
+        except Exception as exc:
+            s = str(exc)
+            print(f"\nError: {s}\n")
+            if "3230" in s or "function calls" in s:
                 messages = clean_message_history(messages)
                 print("[Message history cleaned — please retry]\n")
-
             log_action(
                 action="UNKNOWN",
                 user_input=user_input,
                 tool_called="none",
                 tool_input="",
-                result=error_str,
-                status="error"
+                result=s,
+                status="error",
             )
 
 
