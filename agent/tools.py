@@ -682,3 +682,6 @@ ALL_TOOLS = [
     tool_search_knowledge,
     tool_analyze_security,
 ]
+
+# Exported for use by agent.py and test suite
+TOOL_MAP = {t.name: t for t in ALL_TOOLS}

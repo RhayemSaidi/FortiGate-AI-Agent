@@ -46,8 +46,13 @@ def backup_config(save_path: str = None) -> str:
             if response.status_code == 403:
                 return "[BACKUP FAILED] Forbidden — API token lacks System Config read permission."
             if response.status_code == 405:
-                last_error = f"405 on strategy '{strategy['label']}'"
-                continue
+                return (
+                    "[BACKUP FAILED] HTTP 405 — The FortiGate backup API is not "
+                    "available on this device.\n"
+                    "This is common on FortiGate VM trial/evaluation editions.\n"
+                    "Alternative: Download the config manually from the FortiGate GUI:\n"
+                    "  Dashboard → System Information → Backup Configuration button."
+                )
 
             response.raise_for_status()
 
