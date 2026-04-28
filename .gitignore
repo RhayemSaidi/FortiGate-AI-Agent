@@ -8,3 +8,4 @@ env/
 .vscode/
 *.pdf
 rag/chroma_db/
+test_full.py

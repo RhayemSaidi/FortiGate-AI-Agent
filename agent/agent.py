@@ -31,6 +31,7 @@ from validator import (
     ValidationResult,
 )
 
+# All write tools — these ALWAYS go through confirmation
 WRITE_TOOLS = {
     "tool_create_policy",
     "tool_update_policy",
@@ -44,6 +45,7 @@ WRITE_TOOLS = {
     "tool_backup_config",
 }
 
+# Validator map
 VALIDATORS = {
     "tool_create_policy":           validate_create_policy,
     "tool_delete_policy":           validate_delete_policy,
@@ -56,8 +58,8 @@ VALIDATORS = {
     "tool_block_ip":                validate_block_ip,
 }
 
-# Maximum conversation turns to keep (each turn = 1 Human + 1 AI message)
-MAX_TURNS = 15
+# Keep last N Human/AI pairs in conversation
+MAX_TURNS = 12
 
 
 # ══════════════════════════════════════════════════════════
@@ -66,14 +68,9 @@ MAX_TURNS = 15
 
 def build_llms():
     """
-    Two LLM instances with clear separation of purpose:
-    - llm_tools : tools bound — used ONLY for tool selection
-    - llm_plain : no tools   — used ONLY for formatting responses
-
-    ARCHITECTURE NOTE:
-    llm_plain never receives ToolMessage objects — it only receives
-    clean HumanMessage/AIMessage conversation history.
-    This permanently eliminates the 400 "Unexpected role tool" error.
+    llm_tools : selects which tool to call — only used for
+                knowledge/analysis questions and complex queries
+    llm_plain : formats tool results — NEVER receives ToolMessages
     """
     base = ChatMistralAI(
         model="mistral-small-latest",
@@ -109,104 +106,327 @@ def invoke_with_retry(llm, messages: list, max_retries: int = 3):
 # ══════════════════════════════════════════════════════════
 #  Conversation management
 #
-#  KEY DESIGN: `conversation` contains ONLY SystemMessage +
-#  HumanMessage/AIMessage pairs. ToolMessages NEVER enter it.
-#
-#  For each Mistral turn we build a temporary `turn_msgs` list:
-#    turn_msgs = list(conversation) + [HumanMessage(user_input)]
-#  Tool calls happen inside turn_msgs only.
-#  Only the final clean answer is appended to conversation.
-#
-#  This completely prevents the 400 "Unexpected role tool" error.
+#  `conversation` contains ONLY SystemMessage + Human/AI pairs.
+#  ToolMessages NEVER enter it. This prevents all 400 errors.
 # ══════════════════════════════════════════════════════════
 
 def trim_conversation(conversation: list) -> list:
-    """
-    Keep SystemMessage + last MAX_TURNS * 2 messages.
-    conversation only contains Human/AI messages so no
-    ToolMessage ordering issues can occur here.
-    """
     system = [m for m in conversation if isinstance(m, SystemMessage)]
     rest   = [m for m in conversation if not isinstance(m, SystemMessage)]
-
     if len(rest) <= MAX_TURNS * 2:
         return conversation
-
     return system + rest[-(MAX_TURNS * 2):]
 
 
 # ══════════════════════════════════════════════════════════
-#  Intent detection — fast path for unambiguous reads only
+#  Intent detection
+#
+#  ARCHITECTURE: detect_intent catches ALL clear commands.
+#  Mistral is only used for knowledge questions and
+#  genuinely ambiguous conversational inputs.
+#  Write commands return (tool_name, None) — params extracted later.
 # ══════════════════════════════════════════════════════════
 
 def detect_intent(text: str):
-    """
-    Fast path for unambiguous read commands and security scan.
-    Covers English and French variants.
-    All write operations and complex queries go to Mistral.
-    Returns (tool_name, args_dict) or None.
-    """
     t = text.lower().strip()
 
-    # Policy listing — English and French
+    # ── READ commands ─────────────────────────────────────
     if re.search(r'(list|show|get|display|all|lister|afficher|voir|montrer)'
                  r'\s+(all\s+)?(firewall\s+)?(polic|rules|r.gles|politiques)', t):
         return ("tool_list_policies", {})
 
-    # Address listing
     if re.search(r'(list|show|get|display|all|lister|afficher)'
-                 r'\s+(all\s+)?(address|addresse|objet)', t):
+                 r'\s+(all\s+)?(address|adresse|objet\s+d)', t):
         return ("tool_list_addresses", {})
 
-    # Interface listing
     if re.search(r'(list|show|get|display|all|lister|afficher)'
-                 r'\s+(all\s+)?(interface|network\s+interface)', t):
+                 r'\s+(all\s+)?(network\s+)?(interface)', t):
         return ("tool_list_interfaces", {})
 
-    # User listing
     if re.search(r'(list|show|get|display|all|lister)'
                  r'\s+(all\s+)?(user|utilisateur)', t):
         return ("tool_list_users", {})
 
-    # Route listing
     if re.search(r'(list|show|get|display|all|lister)'
-                 r'\s+(all\s+)?(route|routing|routage)', t):
+                 r'\s+(all\s+)?(static\s+)?(route|routage)', t):
         return ("tool_list_routes", {})
 
-    # System status
-    if re.search(r'(system|device|syst.me|dispositif)\s+(status|.tat|info)',t):
+    if re.search(r'(system|device|syst.me)\s+(status|.tat|info)', t):
         return ("tool_get_system_status", {})
     if re.search(r'\b(check\s+)?(firmware|version)\b', t):
         return ("tool_get_system_status", {})
 
-    # CPU / memory
-    if re.search(r'\b(check\s+)?(cpu|memory|m.moire|ram|resource|ressource)\b', t):
+    if re.search(r'\b(check\s+)?(cpu|memory|m.moire|ram|resource)\b', t):
         return ("tool_get_cpu_memory", {})
 
-    # VPN
     if re.search(r'(vpn\s+(status|tunnel|.tat)|ipsec\s+tunnel'
                  r'|show\s+vpn|list\s+vpn|statut\s+vpn)', t):
         return ("tool_get_vpn_status", {})
 
-    # Sessions
     if re.search(r'(active\s+session|session\s+count'
-                 r'|connexions\s+actives|sessions\s+actives)', t):
+                 r'|connexions\s+actives)', t):
         return ("tool_get_active_sessions", {})
+
+    if re.search(r'\b(analyz|audit|security\s+check|scan\s+firewall'
+                 r'|analyser|v.rifier\s+s.curit.)\b', t):
+        return ("tool_analyze_security", {})
+
+    if re.search(r'(show|list|lister|afficher)\s+(blocked|block|bloqu)', t):
+        return ("tool_list_addresses", {})
+
+    # ── WRITE commands — all caught here to guarantee confirmation ──
+    # Policy operations
+    if re.search(r'(create|add|new|make|ajouter|cr.er|nouvelle?)\s+'
+                 r'(a\s+)?(firewall\s+)?(polic|r.gle)', t):
+        return ("tool_create_policy", None)
+
+    if re.search(r'(block|deny|allow|permit|bloquer|autoriser|interdire)'
+                 r'\s+\w+\s+(from|on|between|traffic|de|sur)', t):
+        return ("tool_create_policy", None)
+
+    if re.search(r'(update|modify|change|edit|modifier|changer|mettre\s+.+jour)'
+                 r'\s+(policy|polic|r.gle)\s+\d+', t):
+        return ("tool_update_policy", None)
+
+    if re.search(r'(enable|disable|activer|d.sactiver)\s+'
+                 r'(policy|polic|r.gle)\s+\d+', t):
+        return ("tool_enable_disable_policy", None)
+
+    if re.search(r'(delete|remove|supprimer|effacer)\s+'
+                 r'(policy|polic|r.gle)', t):
+        return ("tool_delete_policy", None)
+
+    if re.search(r'(move|reorder|d.placer|r.organiser)\s+'
+                 r'(policy|polic|r.gle)', t):
+        return ("tool_move_policy", None)
+
+    # Address operations
+    if re.search(r'(create|add|new|ajouter|cr.er)\s+'
+                 r'(a\s+)?(address|addr|objet\s+d.adresse)', t):
+        return ("tool_create_address", None)
+
+    if re.search(r'(delete|remove|supprimer)\s+'
+                 r'(address|addr|objet)', t):
+        return ("tool_delete_address", None)
+
+    # Interface operations
+    if re.search(r'(disable|enable|update|change|d.sactiver|activer|mettre\s+.+jour)'
+                 r'\s+(http|telnet|ssh|https|management|gestion|access)', t):
+        return ("tool_update_interface_access", None)
+
+    # Block IP
+    if re.search(r'(block\s+ip|bloquer\s+ip|block\s+the\s+ip'
+                 r'|bloquer\s+l.ip)\s+[\d\.]+', t):
+        return ("tool_block_ip", None)
 
     # Backup
     if re.search(r'\bbackup\b|\bsauvegarde\b|\bsave\s+config\b', t):
         return ("tool_backup_config", {})
 
-    # Security analysis
-    if re.search(r'\b(analyz|audit|security\s+check|scan\s+firewall'
-                 r'|analyser|audit|v.rifier\s+s.curit.)\b', t):
-        return ("tool_analyze_security", {})
-
-    # Blocked IPs fast path
-    if re.search(r'(show|list|lister|afficher)\s+(blocked|block|bloqu)', t):
-        return ("tool_list_addresses", {})
+    # Policy details by ID
+    if re.search(r'(show|get|display|detail|info)\s+'
+                 r'(of\s+)?(policy|polic|r.gle)\s+\d+', t):
+        return ("tool_get_policy_details", None)
 
     return None
+
+
+# ══════════════════════════════════════════════════════════
+#  Parameter extraction
+# ══════════════════════════════════════════════════════════
+
+def extract_params(tool_name: str, user_input: str, llm_plain) -> dict:
+    """
+    Use the plain LLM to extract structured parameters from natural language.
+    Returns a dict or None if required fields cannot be extracted.
+    """
+
+    if tool_name == "tool_create_policy":
+        prompt = (
+            f'Extract firewall policy parameters from:\n"{user_input}"\n\n'
+            "Reply with ONLY valid JSON, nothing else:\n"
+            '{"name":"PolicyName","srcintf":"port1","dstintf":"port2",'
+            '"srcaddr":"all","dstaddr":"all","service":"SSH","action":"deny"}\n\n'
+            "Rules:\n"
+            "- action: exactly 'accept' or 'deny' (block/deny/restrict -> 'deny')\n"
+            "- service: ALL HTTP HTTPS SSH FTP DNS SMTP RDP PING\n"
+            "- srcaddr and dstaddr default to 'all' if not mentioned\n"
+            "- name: single word, no spaces, use hyphens\n"
+            "- If you cannot determine srcintf or dstintf, use 'port1' and 'port2'"
+        )
+        response = llm_plain.invoke([HumanMessage(content=prompt)])
+        try:
+            match = re.search(r'\{.*\}', response.content.strip(), re.DOTALL)
+            if match:
+                params = json.loads(match.group())
+                if params.get("name") and params.get("srcintf") and params.get("dstintf"):
+                    return params
+        except Exception:
+            pass
+        return None
+
+    elif tool_name == "tool_update_policy":
+        prompt = (
+            f'Extract policy update parameters from:\n"{user_input}"\n\n'
+            "Reply with ONLY valid JSON:\n"
+            '{"policy_id":2,"action":"deny","service":"HTTPS"}\n\n'
+            "Rules:\n"
+            "- policy_id is required (integer)\n"
+            "- Only include fields that change\n"
+            "- action: 'accept' or 'deny'\n"
+            "- status: 'enable' or 'disable'"
+        )
+        response = llm_plain.invoke([HumanMessage(content=prompt)])
+        try:
+            match = re.search(r'\{.*\}', response.content.strip(), re.DOTALL)
+            if match:
+                params = json.loads(match.group())
+                if params.get("policy_id"):
+                    return params
+        except Exception:
+            pass
+        return None
+
+    elif tool_name == "tool_enable_disable_policy":
+        # Extract ID and status from text
+        id_match  = re.search(r'\b(\d+)\b', user_input)
+        if re.search(r'\b(disable|d.sactiver|deactivate)\b', user_input.lower()):
+            status = "disable"
+        else:
+            status = "enable"
+        if id_match:
+            return {"policy_id": int(id_match.group(1)), "status": status}
+        return None
+
+    elif tool_name == "tool_delete_policy":
+        id_match = re.search(r'\b(\d+)\b', user_input)
+        if id_match:
+            return {"policy_id": int(id_match.group(1))}
+        # Try name extraction
+        prompt = (
+            f'Extract the policy ID to delete from:\n"{user_input}"\n\n'
+            "Reply with ONLY valid JSON:\n"
+            '{"policy_id":3}\n\n'
+            "policy_id must be an integer."
+        )
+        response = llm_plain.invoke([HumanMessage(content=prompt)])
+        try:
+            match = re.search(r'\{.*\}', response.content.strip(), re.DOTALL)
+            if match:
+                params = json.loads(match.group())
+                if params.get("policy_id"):
+                    return {"policy_id": int(params["policy_id"])}
+        except Exception:
+            pass
+        return None
+
+    elif tool_name == "tool_move_policy":
+        prompt = (
+            f'Extract policy move parameters from:\n"{user_input}"\n\n'
+            "Reply with ONLY valid JSON:\n"
+            '{"policy_id":3,"move_action":"before","neighbor_id":2}\n\n'
+            "- move_action: 'before' or 'after'\n"
+            "- all values are integers"
+        )
+        response = llm_plain.invoke([HumanMessage(content=prompt)])
+        try:
+            match = re.search(r'\{.*\}', response.content.strip(), re.DOTALL)
+            if match:
+                params = json.loads(match.group())
+                if (params.get("policy_id") and
+                        params.get("move_action") and
+                        params.get("neighbor_id")):
+                    return params
+        except Exception:
+            pass
+        return None
+
+    elif tool_name == "tool_create_address":
+        prompt = (
+            f'Extract address object parameters from:\n"{user_input}"\n\n'
+            "Reply with ONLY valid JSON:\n"
+            '{"name":"ObjectName","subnet":"192.168.1.10/32"}\n\n'
+            "- subnet in CIDR notation\n"
+            "- name: single word, no spaces"
+        )
+        response = llm_plain.invoke([HumanMessage(content=prompt)])
+        try:
+            match = re.search(r'\{.*\}', response.content.strip(), re.DOTALL)
+            if match:
+                params = json.loads(match.group())
+                if params.get("name") and params.get("subnet"):
+                    return params
+        except Exception:
+            pass
+        return None
+
+    elif tool_name == "tool_delete_address":
+        prompt = (
+            f'Extract the address object name to delete from:\n"{user_input}"\n\n'
+            "Reply with ONLY valid JSON:\n"
+            '{"name":"ExactObjectName"}\n\n'
+            "Extract only the exact object name."
+        )
+        response = llm_plain.invoke([HumanMessage(content=prompt)])
+        try:
+            match = re.search(r'\{.*\}', response.content.strip(), re.DOTALL)
+            if match:
+                params = json.loads(match.group())
+                if params.get("name"):
+                    return params
+        except Exception:
+            pass
+        return None
+
+    elif tool_name == "tool_update_interface_access":
+        prompt = (
+            f'Extract interface access parameters from:\n"{user_input}"\n\n'
+            "Reply with ONLY valid JSON:\n"
+            '{"name":"port1","allowaccess":"https ssh ping"}\n\n'
+            "- name: interface name\n"
+            "- allowaccess: space-separated safe protocols only\n"
+            "- NEVER include http or telnet\n"
+            "- If user says disable http/telnet: set allowaccess to 'https ssh ping'\n"
+            "- Do NOT add snmp unless explicitly requested"
+        )
+        response = llm_plain.invoke([HumanMessage(content=prompt)])
+        try:
+            match = re.search(r'\{.*\}', response.content.strip(), re.DOTALL)
+            if match:
+                params = json.loads(match.group())
+                if params.get("name") and params.get("allowaccess"):
+                    return params
+        except Exception:
+            pass
+        return None
+
+    elif tool_name == "tool_block_ip":
+        ip_match = re.search(
+            r'\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?:/\d{1,2})?)\b',
+            user_input
+        )
+        if ip_match:
+            direction = "both"
+            if re.search(r'\binbound\b|\bentr.e\b', user_input.lower()):
+                direction = "inbound"
+            elif re.search(r'\boutbound\b|\bsortant\b', user_input.lower()):
+                direction = "outbound"
+            return {
+                "ip_address": ip_match.group(1),
+                "direction":  direction,
+            }
+        return None
+
+    elif tool_name == "tool_get_policy_details":
+        id_match = re.search(r'\b(\d+)\b', user_input)
+        if id_match:
+            return {"policy_id": int(id_match.group(1))}
+        return None
+
+    elif tool_name == "tool_backup_config":
+        return {}
+
+    return {}
 
 
 # ══════════════════════════════════════════════════════════
@@ -293,7 +513,6 @@ def format_confirmation(tool_name: str, args: dict) -> str:
 # ══════════════════════════════════════════════════════════
 
 def execute_tool(tool_name: str, tool_args: dict, user_input: str) -> str:
-    """Execute a tool safely. Never raises — always returns a string."""
     tool = TOOL_MAP.get(tool_name)
     if not tool:
         return f"[ERROR] Tool '{tool_name}' not found."
@@ -304,7 +523,6 @@ def execute_tool(tool_name: str, tool_args: dict, user_input: str) -> str:
     except Exception as exc:
         tool_result = f"[ERROR] {exc}"
 
-    # Clear validator cache after every write so next validation is fresh
     if tool_name in WRITE_TOOLS:
         clear_cache()
 
@@ -320,28 +538,21 @@ def execute_tool(tool_name: str, tool_args: dict, user_input: str) -> str:
 
 
 # ══════════════════════════════════════════════════════════
-#  Response formatter
-#
-#  IMPORTANT: This function receives `conversation` which
-#  contains ONLY SystemMessage + HumanMessage/AIMessage pairs.
-#  NO ToolMessages. This prevents all 400 errors.
+#  Response formatter — NEVER receives ToolMessages
 # ══════════════════════════════════════════════════════════
 
 def format_response(llm_plain, conversation: list,
                     tool_result: str, user_input: str) -> str:
-    """
-    Format a tool result into natural language using the plain LLM.
-    Uses clean conversation history only — no ToolMessages.
-    """
     fmt = list(conversation) + [
         HumanMessage(
             content=(
                 f"User request: {user_input}\n\n"
-                f"System data retrieved:\n{tool_result}\n\n"
-                f"Present this information clearly and concisely to the user.\n"
-                f"Use plain text only. No emojis. No markdown headers.\n"
-                f"Use simple ASCII tables if the data is tabular.\n"
-                f"Do not call any tools."
+                f"System data:\n{tool_result}\n\n"
+                "Present this clearly and concisely.\n"
+                "Use plain text only. No emojis. No markdown headers or bold.\n"
+                "Use simple ASCII tables for tabular data.\n"
+                "Respond in the same language as the user request above.\n"
+                "Do not call any tools."
             )
         )
     ]
@@ -349,35 +560,28 @@ def format_response(llm_plain, conversation: list,
 
 
 # ══════════════════════════════════════════════════════════
-#  Post-execution verifier
+#  Post-execution verification
 # ══════════════════════════════════════════════════════════
 
 def verify_after_execution(tool_name: str) -> str:
-    """
-    After critical policy operations, verify the change took effect
-    by reading the current policy list from FortiGate.
-    """
     if tool_name not in ("tool_delete_policy", "tool_move_policy",
                          "tool_enable_disable_policy", "tool_create_policy"):
         return ""
-
     try:
         from modules.policies import list_policies as _lp
         r       = _lp()
         results = r if isinstance(r, list) else r.get("results", [])
-
         if not results:
             return "\n[Verified: no policies remain]"
-
         lines = ["\n[Verified current policy order:]"]
         for p in results:
             src = (p.get("srcintf") or [{}])[0].get("name", "?")
             dst = (p.get("dstintf") or [{}])[0].get("name", "?")
-            status_flag = " [disabled]" if p.get("status") == "disable" else ""
+            flag = " [disabled]" if p.get("status") == "disable" else ""
             lines.append(
                 f"  ID {p.get('policyid','?'):>3} | "
                 f"{p.get('name','?'):<25} | "
-                f"{p.get('action','?'):>6}{status_flag} | "
+                f"{p.get('action','?'):>6}{flag} | "
                 f"{src} -> {dst}"
             )
         return "\n".join(lines)
@@ -391,16 +595,11 @@ def verify_after_execution(tool_name: str) -> str:
 
 def handle_confirmation_yes(pending: dict, conversation: list,
                              llm_plain) -> tuple:
-    """
-    Handle a confirmed write action.
-    Returns (stay_in_confirmation_mode, updated_pending).
-    """
     tool_name      = pending["name"]
     tool_args      = pending["args"]
     original_input = pending["original_input"]
     warnings_shown = pending.get("warnings_shown", False)
 
-    # Run validation unless warnings were already shown and accepted
     if not warnings_shown:
         validator = VALIDATORS.get(tool_name)
         if validator:
@@ -414,27 +613,119 @@ def handle_confirmation_yes(pending: dict, conversation: list,
             if validation.has_warnings_only():
                 print(validation.format())
                 pending["warnings_shown"] = True
-                return True, pending  # Stay in confirmation mode
+                return True, pending
 
-    # Execute
     tool_result  = execute_tool(tool_name, tool_args, original_input)
     print(f"[Result: {tool_result}]\n")
 
-    # Post-execution verification
     verification = verify_after_execution(tool_name)
     if verification:
         print(verification)
 
-    # Format final answer using CLEAN conversation history
     answer = format_response(llm_plain, conversation, tool_result, original_input)
     print(f"Agent: {answer}\n")
 
-    # Add to clean conversation history
     conversation.append(HumanMessage(content=original_input))
     conversation.append(AIMessage(content=answer))
     log_conversation(original_input, answer)
 
-    return False, None  # Exit confirmation mode
+    return False, None
+
+
+# ══════════════════════════════════════════════════════════
+#  Knowledge/analysis handler — uses Mistral
+# ══════════════════════════════════════════════════════════
+
+def handle_knowledge_or_analysis(user_input: str, conversation: list,
+                                   llm_tools, llm_plain) -> bool:
+    """
+    Uses Mistral to handle knowledge questions and analysis queries.
+    Returns True if handled, False if should fall through.
+    """
+    turn_msgs = list(conversation)
+    turn_msgs.append(HumanMessage(content=user_input))
+
+    response = invoke_with_retry(llm_tools, turn_msgs)
+    turn_msgs.append(response)
+
+    if response.tool_calls:
+        all_results = []
+        for tool_call in response.tool_calls:
+            t_name = tool_call["name"]
+            t_args = tool_call["args"]
+            t_id   = tool_call["id"]
+
+            # Safety net: if Mistral tries to call a write tool, block it
+            if t_name in WRITE_TOOLS:
+                print(f"\n[Write tool intercepted in Mistral path: {t_name}]")
+                print("[Use an explicit command to perform write operations]\n")
+                return True
+
+            tool_result = execute_tool(t_name, t_args, user_input)
+            turn_msgs.append(ToolMessage(
+                content=tool_result or "No results.",
+                tool_call_id=t_id,
+            ))
+            all_results.append(tool_result)
+
+        if all_results:
+            combined = "\n\n".join(all_results)
+            answer = format_response(llm_plain, conversation, combined, user_input)
+            conversation.append(HumanMessage(content=user_input))
+            conversation.append(AIMessage(content=answer))
+            print(f"\nAgent: {answer}\n")
+            log_conversation(user_input, answer)
+            return True
+
+    else:
+        answer = response.content
+        conversation.append(HumanMessage(content=user_input))
+        conversation.append(AIMessage(content=answer))
+        print(f"\nAgent: {answer}\n")
+        log_conversation(user_input, answer)
+        return True
+
+    return False
+
+
+# ══════════════════════════════════════════════════════════
+#  Knowledge question detector
+# ══════════════════════════════════════════════════════════
+
+def is_knowledge_question(text: str) -> bool:
+    """
+    Returns True if this looks like a knowledge/documentation question
+    that should be answered by searching the RAG knowledge base.
+    """
+    t = text.lower().strip()
+    patterns = [
+        r'\bwhat\s+(is|are|does|do)\b',
+        r'\bhow\s+(do|does|to|can)\b',
+        r'\bwhy\b',
+        r'\bexplain\b',
+        r'\berror\s*-?\d+',
+        r'\berror\s+code\b',
+        r'\bbest\s+practice\b',
+        r'\brecommend\b',
+        r'\bvlan\b',
+        r'\bvpn\b.*\b(how|what|config)\b',
+        r'\bnat\b.*\b(what|how)\b',
+        r'\bospf\b',
+        r'\bbgp\b',
+        r'\bipsec\b.*\b(how|what|config)\b',
+        r'\btroubleshoot\b',
+        r'\bdiagnose\b',
+        r'\bdifference\b',
+        # French
+        r'\bqu.est.ce\b',
+        r'\bcomment\s+(faire|cr.er|configurer)\b',
+        r'\bpourquoi\b',
+        r'\bexpliquer\b',
+        r'\berreur\b',
+        r'\bconfigurer\b',
+        r'\bzone\s+de\s+s.curit.\b',
+    ]
+    return any(re.search(p, t) for p in patterns)
 
 
 # ══════════════════════════════════════════════════════════
@@ -443,11 +734,7 @@ def handle_confirmation_yes(pending: dict, conversation: list,
 
 def run_cli():
     llm_tools, llm_plain = build_llms()
-
-    # ARCHITECTURE: conversation holds ONLY SystemMessage + Human/AI pairs
-    # ToolMessages NEVER enter this list
     conversation = [SystemMessage(content=SYSTEM_PROMPT)]
-
     pending_confirmation = None
 
     print("\n" + "="*55)
@@ -465,7 +752,6 @@ def run_cli():
         if not user_input:
             continue
 
-        # Trim conversation to prevent overflow
         conversation = trim_conversation(conversation)
 
         # ── Handle pending confirmation ───────────────────
@@ -478,7 +764,7 @@ def run_cli():
                 if stay:
                     continue
             else:
-                print("\nAgent: Action cancelled. How else can I help you?\n")
+                print("\nAgent: Action cancelled.\n")
                 log_action(
                     action="CANCELLED",
                     user_input=pending_confirmation["original_input"],
@@ -490,12 +776,61 @@ def run_cli():
                 pending_confirmation = None
             continue
 
-        # ── Fast path: unambiguous read commands ──────────
         try:
             intent = detect_intent(user_input)
 
             if intent:
                 tool_name, tool_args = intent
+
+                # ── Write operation: extract params → confirm ──
+                if tool_name in WRITE_TOOLS and tool_args is None:
+                    tool_args = extract_params(tool_name, user_input, llm_plain)
+
+                    if tool_args is None:
+                        # Missing required parameters — ask user
+                        if tool_name == "tool_create_policy":
+                            msg = ("I need more details to create this policy.\n"
+                                   "Please provide: policy name, source interface, "
+                                   "destination interface, service, and action (accept/deny).")
+                        elif tool_name == "tool_create_address":
+                            msg = ("I need the address object name and subnet "
+                                   "(e.g. 192.168.1.10/32).")
+                        elif tool_name == "tool_delete_address":
+                            msg = "Please provide the exact name of the address object to delete."
+                        elif tool_name in ("tool_delete_policy",
+                                           "tool_enable_disable_policy"):
+                            msg = "Please provide the policy ID number."
+                        elif tool_name == "tool_move_policy":
+                            msg = ("Please provide: policy ID to move, "
+                                   "direction (before/after), and reference policy ID.")
+                        elif tool_name == "tool_block_ip":
+                            msg = "Please provide the IP address to block (e.g. 192.168.1.55)."
+                        else:
+                            msg = "Please provide the required details for this operation."
+
+                        print(f"\nAgent: {msg}\n")
+                        log_conversation(user_input, msg)
+                        continue
+
+                    print(format_confirmation(tool_name, tool_args))
+                    pending_confirmation = {
+                        "name": tool_name,
+                        "args": tool_args,
+                        "original_input": user_input,
+                    }
+                    continue
+
+                # ── Write with known args (backup, etc.) ──────
+                if tool_name in WRITE_TOOLS:
+                    print(format_confirmation(tool_name, tool_args))
+                    pending_confirmation = {
+                        "name": tool_name,
+                        "args": tool_args,
+                        "original_input": user_input,
+                    }
+                    continue
+
+                # ── Read tool: execute immediately ────────────
                 tool_result = execute_tool(tool_name, tool_args, user_input)
                 answer = format_response(
                     llm_plain, conversation, tool_result, user_input
@@ -505,81 +840,38 @@ def run_cli():
                 print(f"\nAgent: {answer}\n")
                 log_conversation(user_input, answer)
 
+            elif is_knowledge_question(user_input):
+                # ── Knowledge/documentation question → RAG ────
+                # Force tool_search_knowledge directly without Mistral deciding
+                from tools import tool_search_knowledge
+                print(f"\n[Calling: tool_search_knowledge]")
+                tool_result = str(tool_search_knowledge.invoke({"query": user_input}))
+                log_action(
+                    action="TOOL_SEARCH_KNOWLEDGE",
+                    user_input=user_input,
+                    tool_called="tool_search_knowledge",
+                    tool_input=user_input,
+                    result=tool_result,
+                    status="success",
+                )
+                answer = format_response(
+                    llm_plain, conversation, tool_result, user_input
+                )
+                conversation.append(HumanMessage(content=user_input))
+                conversation.append(AIMessage(content=answer))
+                print(f"\nAgent: {answer}\n")
+                log_conversation(user_input, answer)
+
             else:
-                # ── Mistral path ──────────────────────────
-                # Build a temporary turn_messages list from clean conversation.
-                # Tool call messages stay in turn_msgs and are NEVER added to
-                # conversation. This permanently prevents the 400 error.
-
-                turn_msgs = list(conversation)
-                turn_msgs.append(HumanMessage(content=user_input))
-
-                response = invoke_with_retry(llm_tools, turn_msgs)
-                turn_msgs.append(response)
-
-                if response.tool_calls:
-                    all_results = []
-                    confirmation_triggered = False
-
-                    for tool_call in response.tool_calls:
-                        t_name = tool_call["name"]
-                        t_args = tool_call["args"]
-                        t_id   = tool_call["id"]
-
-                        if t_name in WRITE_TOOLS:
-                            # Add placeholder ToolMessage to keep turn_msgs valid
-                            turn_msgs.append(ToolMessage(
-                                content="Awaiting user confirmation.",
-                                tool_call_id=t_id,
-                            ))
-                            print(format_confirmation(t_name, t_args))
-                            pending_confirmation = {
-                                "name": t_name,
-                                "args": t_args,
-                                "id":   t_id,
-                                "original_input": user_input,
-                            }
-                            confirmation_triggered = True
-                            break
-
-                        # Read tool — execute and add result to turn_msgs
-                        tool_result = execute_tool(t_name, t_args, user_input)
-                        turn_msgs.append(ToolMessage(
-                            content=tool_result or "No results.",
-                            tool_call_id=t_id,
-                        ))
-                        all_results.append(tool_result)
-
-                    if not confirmation_triggered and all_results:
-                        # Format results using CLEAN conversation (not turn_msgs)
-                        combined = "\n\n".join(all_results)
-                        answer = format_response(
-                            llm_plain, conversation, combined, user_input
-                        )
-                        # Add clean Human/AI pair to conversation
-                        conversation.append(HumanMessage(content=user_input))
-                        conversation.append(AIMessage(content=answer))
-                        print(f"\nAgent: {answer}\n")
-                        log_conversation(user_input, answer)
-
-                else:
-                    # Pure conversation — no tool needed
-                    answer = response.content
-                    conversation.append(HumanMessage(content=user_input))
-                    conversation.append(AIMessage(content=answer))
-                    print(f"\nAgent: {answer}\n")
-                    log_conversation(user_input, answer)
+                # ── Fallback: Mistral for complex/ambiguous queries ──
+                handle_knowledge_or_analysis(
+                    user_input, conversation, llm_tools, llm_plain
+                )
 
         except Exception as exc:
             error_str = str(exc)
             print(f"\nError: {error_str}\n")
-
-            # Clear pending_confirmation on error so ghost confirmations
-            # cannot appear on the next request
-            if pending_confirmation:
-                pending_confirmation = None
-                print("[Confirmation cleared due to error — please retry your request]\n")
-
+            pending_confirmation = None
             log_action(
                 action="UNKNOWN",
                 user_input=user_input,
