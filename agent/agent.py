@@ -59,9 +59,7 @@ VALIDATORS = {
 MAX_TURNS = 12
 
 
-# ══════════════════════════════════════════════════════════
 #  LLM
-# ══════════════════════════════════════════════════════════
 
 def build_llms():
     base = ChatMistralAI(
@@ -72,9 +70,7 @@ def build_llms():
     return base.bind_tools(ALL_TOOLS), base
 
 
-# ══════════════════════════════════════════════════════════
 #  Retry — FIX: added ReadTimeout handling
-# ══════════════════════════════════════════════════════════
 
 def invoke_with_retry(llm, messages: list, max_retries: int = 3):
     for attempt in range(max_retries):
@@ -99,9 +95,7 @@ def invoke_with_retry(llm, messages: list, max_retries: int = 3):
     raise Exception("Mistral API unavailable after retries. Please try again.")
 
 
-# ══════════════════════════════════════════════════════════
 #  Conversation management
-# ══════════════════════════════════════════════════════════
 
 def trim_conversation(conversation: list) -> list:
     system = [m for m in conversation if isinstance(m, SystemMessage)]
@@ -111,13 +105,11 @@ def trim_conversation(conversation: list) -> list:
     return system + rest[-(MAX_TURNS * 2):]
 
 
-# ══════════════════════════════════════════════════════════
 #  Policy name → ID resolver
 #
 #  Allows users to refer to policies by name in addition
 #  to ID. Fetches the current policy list and returns the
 #  numeric ID for the given name. Returns None if not found.
-# ══════════════════════════════════════════════════════════
 
 def resolve_policy_id(name_or_id: str) -> int:
     """
@@ -141,14 +133,12 @@ def resolve_policy_id(name_or_id: str) -> int:
     return None
 
 
-# ══════════════════════════════════════════════════════════
 #  Write intent detector
 #
 #  Used as a safety check AFTER Mistral responds.
 #  If Mistral returned no tool calls but the input clearly
 #  looks like a write command, we block the response and
 #  re-route through the deterministic path.
-# ══════════════════════════════════════════════════════════
 
 _WRITE_INTENT_PATTERNS = [
     r'\b(create|add|new|make)\s+(a\s+)?(firewall\s+)?(polic|r.gle)',
@@ -170,9 +160,7 @@ def is_write_intent(text: str) -> bool:
     return any(re.search(p, t) for p in _WRITE_INTENT_PATTERNS)
 
 
-# ══════════════════════════════════════════════════════════
 #  Knowledge question detector
-# ══════════════════════════════════════════════════════════
 
 _COMMAND_STARTERS = re.compile(
     r'^(list|show|get|display|create|add|delete|remove|move|switch|swap|'
@@ -222,9 +210,7 @@ def is_knowledge_question(text: str) -> bool:
     return any(re.search(p, t) for p in _QUESTION_PATTERNS)
 
 
-# ══════════════════════════════════════════════════════════
 #  Intent detection
-# ══════════════════════════════════════════════════════════
 
 def detect_intent(text: str):
     t = text.lower().strip()
@@ -365,10 +351,8 @@ def detect_intent(text: str):
     return None
 
 
-# ══════════════════════════════════════════════════════════
 #  Parameter extraction
 #  FIX: resolve_policy_id used for name-based operations
-# ══════════════════════════════════════════════════════════
 
 def extract_params(tool_name: str, user_input: str, llm_plain) -> dict:
 
@@ -616,9 +600,7 @@ def extract_params(tool_name: str, user_input: str, llm_plain) -> dict:
     return {}
 
 
-# ══════════════════════════════════════════════════════════
 #  Confirmation formatter
-# ══════════════════════════════════════════════════════════
 
 def format_confirmation(tool_name: str, args: dict) -> str:
     lines = ["\n" + "="*55, "  CONFIRMATION REQUIRED", "="*55]
@@ -695,9 +677,7 @@ def format_confirmation(tool_name: str, args: dict) -> str:
     return "\n".join(lines)
 
 
-# ══════════════════════════════════════════════════════════
 #  Tool executor
-# ══════════════════════════════════════════════════════════
 
 def execute_tool(tool_name: str, tool_args: dict, user_input: str) -> str:
     tool = TOOL_MAP.get(tool_name)
@@ -724,9 +704,7 @@ def execute_tool(tool_name: str, tool_args: dict, user_input: str) -> str:
     return tool_result
 
 
-# ══════════════════════════════════════════════════════════
 #  Response formatter
-# ══════════════════════════════════════════════════════════
 
 def format_response(llm_plain, conversation: list,
                     tool_result: str, user_input: str) -> str:
@@ -747,13 +725,7 @@ def format_response(llm_plain, conversation: list,
     return invoke_with_retry(llm_plain, fmt).content
 
 
-# ══════════════════════════════════════════════════════════
 #  Post-execution state verifier
-#
-#  FIX: Real verification — fetches actual state from
-#  FortiGate and confirms the change happened.
-#  Returns a human-readable verification string.
-# ══════════════════════════════════════════════════════════
 
 def verify_after_execution(tool_name: str, tool_args: dict,
                             tool_result: str) -> str:
@@ -824,9 +796,7 @@ def verify_after_execution(tool_name: str, tool_args: dict,
     return ""
 
 
-# ══════════════════════════════════════════════════════════
 #  Confirmation handler
-# ══════════════════════════════════════════════════════════
 
 def handle_confirmation_yes(pending: dict, conversation: list,
                              llm_plain) -> tuple:
@@ -868,14 +838,11 @@ def handle_confirmation_yes(pending: dict, conversation: list,
     return False, None
 
 
-# ══════════════════════════════════════════════════════════
 #  Mistral path — conversational fallback only
-#
-#  FIX: After Mistral responds, check if the input was
+#  After Mistral responds, check if the input was
 #  actually a write intent. If Mistral returned no tool
 #  calls for a write intent, block the response and
 #  re-route through the deterministic path.
-# ══════════════════════════════════════════════════════════
 
 def handle_with_mistral(user_input: str, conversation: list,
                          llm_tools, llm_plain,
@@ -944,9 +911,7 @@ def handle_with_mistral(user_input: str, conversation: list,
             log_conversation(user_input, answer)
 
 
-# ══════════════════════════════════════════════════════════
 #  Main CLI loop
-# ══════════════════════════════════════════════════════════
 
 def run_cli():
     llm_tools, llm_plain = build_llms()
