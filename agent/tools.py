@@ -21,9 +21,7 @@ from rag.retriever import search, search_errors
 from insights      import run_analysis
 
 
-# ══════════════════════════════════════════════════════════
 #  SYSTEM HEALTH TOOLS
-# ══════════════════════════════════════════════════════════
 
 @tool
 def tool_get_system_status(input: str = "") -> str:
@@ -110,9 +108,7 @@ def tool_get_vpn_status(input: str = "") -> str:
         return f"[ERROR] {exc}"
 
 
-# ══════════════════════════════════════════════════════════
 #  CONFIGURATION READ TOOLS
-# ══════════════════════════════════════════════════════════
 
 @tool
 def tool_list_policies(input: str = "") -> str:
@@ -256,9 +252,7 @@ def tool_list_routes(input: str = "") -> str:
         return f"[ERROR] {exc}"
 
 
-# ══════════════════════════════════════════════════════════
 #  POLICY WRITE TOOLS
-# ══════════════════════════════════════════════════════════
 
 @tool
 def tool_create_policy(name: str, srcintf: str, dstintf: str,
@@ -415,9 +409,7 @@ def tool_move_policy(policy_id: int, move_action: str,
         return f"[ERROR] {exc}"
 
 
-# ══════════════════════════════════════════════════════════
 #  ADDRESS WRITE TOOLS
-# ══════════════════════════════════════════════════════════
 
 @tool
 def tool_create_address(name: str, subnet: str) -> str:
@@ -456,9 +448,7 @@ def tool_delete_address(name: str) -> str:
         return f"[ERROR] {exc}"
 
 
-# ══════════════════════════════════════════════════════════
 #  INTERFACE WRITE TOOLS
-# ══════════════════════════════════════════════════════════
 
 @tool
 def tool_update_interface_access(name: str, allowaccess: str) -> str:
@@ -491,9 +481,7 @@ def tool_update_interface_access(name: str, allowaccess: str) -> str:
         return f"[ERROR] {exc}"
 
 
-# ══════════════════════════════════════════════════════════
 #  INCIDENT RESPONSE
-# ══════════════════════════════════════════════════════════
 
 @tool
 def tool_block_ip(ip_address: str, direction: str = "both",
@@ -583,9 +571,7 @@ def tool_block_ip(ip_address: str, direction: str = "both",
         return f"[ERROR] {exc}"
 
 
-# ══════════════════════════════════════════════════════════
 #  MAINTENANCE
-# ══════════════════════════════════════════════════════════
 
 @tool
 def tool_backup_config(input: str = "") -> str:
@@ -599,9 +585,7 @@ def tool_backup_config(input: str = "") -> str:
         return f"[ERROR] Backup failed: {exc}"
 
 
-# ══════════════════════════════════════════════════════════
 #  INTELLIGENCE
-# ══════════════════════════════════════════════════════════
 
 @tool
 def tool_search_knowledge(query: str) -> str:
@@ -646,9 +630,7 @@ def tool_analyze_security(input: str = "") -> str:
         return f"[ERROR] Security analysis failed: {exc}"
 
 
-# ══════════════════════════════════════════════════════════
 #  MASTER TOOL LIST
-# ══════════════════════════════════════════════════════════
 
 ALL_TOOLS = [
     # System health

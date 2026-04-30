@@ -1,137 +1,153 @@
 # FortiGate AI Agent
 
-This project is a conversational AI agent designed to manage FortiGate firewalls using natural language.  
-It was developed as a final-year engineering project (PFE).
+AI-powered conversational system for managing FortiGate firewalls using natural language.
 
-The goal is to simplify firewall administration by allowing administrators to use natural language (English or French) instead of the GUI or CLI. The agent translates requests into secure and validated FortiGate API actions.
+This project was developed as a final-year engineering project (PFE). It enables administrators to interact with firewall infrastructure using English or French instead of CLI or GUI, while ensuring secure, validated, and auditable execution of all operations.
 
 ---
 
-# Features
+# Overview
 
-## Read operations
-- List firewall policies, address objects, interfaces, users, and static routes
-- Retrieve system information (hostname, firmware version, model)
-- Monitor CPU, memory, VPN status, and active sessions
-- Perform full security analysis of the firewall configuration
+FortiGate AI Agent acts as an intelligent abstraction layer over FortiGate REST APIs. It interprets user requests, understands intent using a language model, retrieves contextual knowledge when needed, and executes safe, validated firewall operations.
 
-## Write operations (require confirmation)
-- Create, update, delete, enable, disable, and reorder firewall policies
-- Create and delete address objects
-- Modify interface management access (HTTP, HTTPS, SSH, Telnet)
-- Block IP addresses for incident response
+The system is designed with security, traceability, and enterprise-grade validation as core principles.
+
+---
+
+# Key Features
+
+## Natural Language Firewall Management
+- Control FortiGate using English or French commands
+- Support for both direct commands and conversational queries
+- Intelligent intent detection and routing
+
+## Read Operations (safe, no confirmation required)
+- Firewall policies, address objects, interfaces, users
+- System information (CPU, memory, firmware, hostname)
+- Active sessions and VPN status
+- Security and configuration analysis
+
+## Write Operations (secured pipeline)
+All modification actions require confirmation and validation:
+- Create, update, delete firewall policies
+- Manage address objects and services
+- Modify interface access settings (HTTP, HTTPS, SSH, Telnet)
+- Block malicious IP addresses
 - Backup firewall configuration
 
-## Knowledge base (RAG)
+## Knowledge Base (RAG System)
 - Built from official Fortinet documentation
-- Answers configuration and troubleshooting questions
-- Supports English and French
-- Uses semantic search with ChromaDB
+- Semantic search using ChromaDB
+- Context-aware responses for troubleshooting and configuration
+- Bilingual support (English / French)
+
+## Security and Audit System
+- Full audit logging of all operations
+- SHA-256 tamper-evident log integrity
+- Multi-stage validation pipeline
+- Protection against unsafe configuration changes
 
 ---
 
-# Architecture
+# System Architecture
 
-The system is built using three main layers:
+The system is structured into three main layers:
 
-## 1. Natural Language Understanding (NLU)
-- Mistral AI (mistral-small) interprets user input
+## 1. Natural Language Layer
+- Mistral AI (mistral-small)
+- Interprets user input and extracts intent
 
 ## 2. Orchestration Layer
-- Python-based intent detection and routing
-- LangChain tools for structured execution
-- Validation and confirmation pipeline
+- Python-based control logic
+- Intent detection and routing
+- LangChain tool execution
+- Validation and confirmation system
 
 ## 3. Execution Layer
 - FortiGate REST API (v2)
-- Communication via Python requests library
+- Secure HTTP communication via requests library
+- Real-time firewall configuration updates
 
 ---
 
-# Decision Flow
+# Architecture Flow
 
-User Input
-|
-|-- Knowledge question
-|     → RAG search (ChromaDB)
-|     → LLM formats response
-|
-|-- Clear command
-|     → Intent detection
-|        |-- Read operation → Execute immediately
-|        |-- Write operation → Validate → Confirm → Execute
-|
-|-- Ambiguous input
-      → LLM fallback with tool access
+User Request  
+→ Natural Language Understanding (LLM)  
+→ Intent Detection  
 
----
+If Knowledge Query:
+→ RAG Search (ChromaDB)
+→ Contextual Response Generation
 
-# Safety System
+If Command:
+→ Read Operation → Execute directly  
+→ Write Operation → Validate → Confirm → Execute → Verify  
 
-All write operations follow a strict pipeline:
-
-- Intent detection (deterministic, not LLM-based)
-- Parameter extraction
-- User confirmation
-- Validation:
-  - Parameter completeness
-  - Format validation (IP, subnet, naming)
-  - Existence checks
-  - Conflict detection
-  - Security analysis
-- Warning handling (requires second confirmation if risky)
-- Execution on FortiGate
-- Verification of real state after execution
-- Audit logging with SHA-256 integrity checks
+If Ambiguous:
+→ LLM Tool-Based Reasoning
 
 ---
 
 # Project Structure
 
-fortigate_agent/
+The project is organized in a modular architecture separating the AI agent, API layer, firewall modules, RAG system, audit system, and core application entry points.
 
-├── config.py  
-├── config.example.py  
-├── main.py  
-├── test_full.py  
-├── app.py  
-├── requirements.txt  
-
-├── api/  
-│   └── client.py  
-
-├── modules/  
-│   ├── system.py  
-│   ├── monitor.py  
-│   ├── policies.py  
-│   ├── addresses.py  
-│   ├── interfaces.py  
-│   ├── routing.py  
-│   ├── users.py  
-│   ├── vpn.py  
-│   ├── backup.py  
-│   ├── logs.py  
-│   └── services.py  
-
-├── rag/  
-│   ├── loader.py  
-│   ├── vectorstore.py  
-│   ├── retriever.py  
-│   └── docs/  
-
-├── audit/  
-│   ├── logger.py  
-│   └── report.py  
-
-├── logs/  
-│   └── audit.jsonl  
-
-└── agent/  
-    ├── agent.py  
-    ├── tools.py  
-    ├── prompt.py  
-    ├── validator.py  
-    └── insights.py  
+```text
+FortiGate-AI-Agent/
+│
+├── app.py
+├── main.py
+├── test_full.py
+├── requirements.txt
+├── README.md
+├── .gitignore
+├── config.example.py
+├── config.py
+│
+├── agent/
+│   ├── agent.py
+│   ├── tools.py
+│   ├── prompt.py
+│   ├── validator.py
+│   ├── insights.py
+│   └── __init__.py
+│
+├── api/
+│   ├── client.py
+│   └── __init__.py
+│
+├── audit/
+│   ├── logger.py
+│   ├── report.py
+│   └── __init__.py
+│
+├── logs/
+│   └── audit.jsonl
+│
+├── modules/
+│   ├── system.py
+│   ├── monitor.py
+│   ├── policies.py
+│   ├── addresses.py
+│   ├── interfaces.py
+│   ├── routing.py
+│   ├── users.py
+│   ├── vpn.py
+│   ├── backup.py
+│   ├── logs.py
+│   ├── services.py
+│   └── __init__.py
+│
+├── rag/
+│   ├── loader.py
+│   ├── retriever.py
+│   ├── vectorstore.py
+│   ├── add_best_practices.py
+│   ├── docs/
+│   └── __init__.py
+│
+└── docs/
 
 ---
 
