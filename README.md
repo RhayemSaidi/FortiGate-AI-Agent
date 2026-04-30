@@ -191,11 +191,7 @@ python agent.py
 
 ## Web Interface
 
-streamlit run app.py  
-
-## Run Tests
-
-python test_full.py  
+streamlit run app.py    
 
 ---
 
