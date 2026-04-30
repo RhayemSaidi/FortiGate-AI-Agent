@@ -1,0 +1,5 @@
+#change in this file 
+FORTIGATE_IP = "YOUR_FORTIGATE_IP_ADDRESS" #preferably a static ip
+API_TOKEN = "YOUR_FORTIGATE_API_TOKEN"
+VERIFY_SSL = False
+MISTRAL_API_KEY = "MISTRAL_API_KEY"
