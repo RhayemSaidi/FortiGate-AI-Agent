@@ -1,8 +1,9 @@
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
+import re
 from langchain_core.tools import tool
+from langchain.tools import tool as lc_tool
 
 from modules.system     import get_system_status
 from modules.monitor    import get_cpu_usage, get_memory_usage, get_active_sessions
@@ -109,6 +110,206 @@ def tool_get_vpn_status(input: str = "") -> str:
 
 
 #  CONFIGURATION READ TOOLS
+
+# ── Policy search and analysis tools ─────────────────────────────────────────
+
+@tool
+def tool_search_policies(
+    action:  str = "",
+    status:  str = "",
+    service: str = "",
+    srcintf: str = "",
+    dstintf: str = "",
+    name:    str = "",
+    nat:     str = "",
+) -> str:
+    """
+    Search and filter firewall policies by field values.
+    Returns only policies that match ALL specified criteria.
+    All parameters are optional — provide at least one filter.
+
+    Parameters:
+        action  : Filter by action: 'accept' or 'deny'
+        status  : Filter by status: 'enable' or 'disable'
+        service : Filter by service name e.g. 'HTTP', 'SSH', 'HTTPS', 'FTP'
+        srcintf : Filter by source interface e.g. 'port1', 'wan1'
+        dstintf : Filter by destination interface
+        name    : Filter by policy name (partial match)
+        nat     : Filter by NAT status: 'enable' or 'disable'
+    """
+    from modules.policies import search_policies
+
+    filters = {}
+    if action:  filters["action"]  = action.lower()
+    if status:  filters["status"]  = status.lower()
+    if service: filters["service"] = service.upper()
+    if srcintf: filters["srcintf"] = srcintf.lower()
+    if dstintf: filters["dstintf"] = dstintf.lower()
+    if name:    filters["name"]    = name
+    if nat:     filters["nat"]     = nat.lower()
+
+    if not filters:
+        return "[ERROR] At least one filter must be provided."
+
+    result = search_policies(filters)
+
+    if "error" in result:
+        return f"[ERROR] {result['error']}"
+
+    policies = result.get("results", [])
+    count    = result.get("count", 0)
+    total    = result.get("total_policies", 0)
+    applied  = result.get("filters_applied", filters)
+
+    if count == 0:
+        filter_desc = ", ".join(f"{k}={v}" for k, v in applied.items())
+        return (
+            f"[SUCCESS] No policies found matching: {filter_desc}. "
+            f"({total} total policies on this FortiGate)"
+        )
+
+    filter_desc = ", ".join(f"{k}={v}" for k, v in applied.items())
+    lines = [
+        f"[SUCCESS] Found {count} of {total} policies matching: {filter_desc}",
+        "",
+        f"  {'ID':>3} | {'Name':<25} | {'Action':>6} | {'Status':<8} | "
+        f"{'Src Intf':<10} | {'Dst Intf':<10} | Services",
+        "  " + "-" * 90,
+    ]
+
+    for p in policies:
+        src    = (p.get("srcintf") or [{}])[0].get("name", "?")
+        dst    = (p.get("dstintf") or [{}])[0].get("name", "?")
+        svcs   = ", ".join(
+            s.get("name", "?") for s in (p.get("service") or [])
+        ) or "—"
+        flag   = " [off]" if p.get("status") == "disable" else ""
+        pid    = p.get("policyid", "?")
+        pname  = p.get("name", "?")
+        action = p.get("action", "?")
+
+        lines.append(
+            f"  {pid:>3} | {pname:<25} | {action:>6}{flag:<7} | "
+            f"{p.get('status','enable'):<8} | {src:<10} | {dst:<10} | {svcs}"
+        )
+
+    return "\n".join(lines)
+
+
+@tool
+def tool_get_address_usage(address_name: str) -> str:
+    """
+    Find all firewall policies that reference a specific address object.
+    Use this before deleting an address to check if it is still in use.
+
+    Parameters:
+        address_name : Exact name of the address object to check
+    """
+    from modules.policies import get_address_usage
+
+    if not address_name or not address_name.strip():
+        return "[ERROR] address_name is required."
+
+    result = get_address_usage(address_name.strip())
+
+    if "error" in result:
+        return f"[ERROR] {result['error']}"
+
+    count    = result.get("used_by_count", 0)
+    policies = result.get("used_by", [])
+
+    if count == 0:
+        return (
+            f"[SUCCESS] Address '{address_name}' is not referenced by any "
+            f"firewall policy. It is safe to delete."
+        )
+
+    lines = [
+        f"[SUCCESS] Address '{address_name}' is referenced by {count} policy/policies:",
+        "",
+        f"  {'ID':>3} | {'Name':<25} | {'Action':>6} | {'Status':<8} | Used as",
+        "  " + "-" * 65,
+    ]
+    for p in policies:
+        roles = " + ".join(p.get("roles", []))
+        lines.append(
+            f"  {p['policyid']:>3} | {p['name']:<25} | "
+            f"{p['action']:>6} | {p.get('status','enable'):<8} | {roles}"
+        )
+
+    lines += [
+        "",
+        f"WARNING: Deleting '{address_name}' will break the {count} "
+        f"policies listed above. Remove it from those policies first.",
+    ]
+    return "\n".join(lines)
+
+
+@tool
+def tool_get_service_usage(service_name: str) -> str:
+    """
+    Find all firewall policies that use a specific service object.
+    Use this before deleting a custom service to check if it is still in use.
+
+    Parameters:
+        service_name : Name of the service object to check (e.g. 'SSH', 'HTTP')
+    """
+    from modules.policies import get_service_usage
+
+    if not service_name or not service_name.strip():
+        return "[ERROR] service_name is required."
+
+    result = get_service_usage(service_name.strip())
+
+    if "error" in result:
+        return f"[ERROR] {result['error']}"
+
+    count    = result.get("used_by_count", 0)
+    policies = result.get("used_by", [])
+
+    if count == 0:
+        return (
+            f"[SUCCESS] Service '{service_name}' is not used by any policy "
+            f"(excluding policies with action=ALL)."
+        )
+
+    lines = [
+        f"[SUCCESS] Service '{service_name}' is used by {count} policy/policies:",
+        "",
+        f"  {'ID':>3} | {'Name':<25} | {'Action':>6} | Status",
+        "  " + "-" * 55,
+    ]
+    for p in policies:
+        lines.append(
+            f"  {p['policyid']:>3} | {p['name']:<25} | "
+            f"{p['action']:>6} | {p.get('status','enable')}"
+        )
+    return "\n".join(lines)
+
+@lc_tool
+def tool_list_services() -> str:
+    """
+    List all service objects defined on this FortiGate.
+    Includes built-in and custom services.
+    """
+    try:
+        from api.client import get
+        r = get("/cmdb/firewall.service/custom")
+        results = r if isinstance(r, list) else r.get("results", [])
+        
+        if not results:
+            return "[SUCCESS] No custom service objects found. Only built-in services available."
+        
+        lines = [f"[SUCCESS] Custom service objects ({len(results)}):"]
+        for s in results:
+            proto = s.get("protocol", "?")
+            port  = s.get("tcp-portrange", s.get("udp-portrange", ""))
+            lines.append(
+                f"  {s.get('name','?'):<30} protocol={proto} port={port}"
+            )
+        return "\n".join(lines)
+    except Exception as exc:
+        return f"[ERROR] Could not fetch services: {exc}"
 
 @tool
 def tool_list_policies(input: str = "") -> str:
@@ -308,13 +509,13 @@ def tool_update_policy(policy_id: int, action: str = "",
                        name: str = "") -> str:
     """
     Modify an existing firewall policy. Only provided fields are changed.
-    Use tool_get_policy_details first to see current values.
+    For service, you can specify multiple services comma-separated: "SSH,HTTPS"
     Parameters:
     - policy_id : numeric ID (required)
-    - action    : change to 'accept' or 'deny'
-    - srcaddr   : new source address object name
-    - dstaddr   : new destination address object name
-    - service   : new service (ALL, HTTP, HTTPS, SSH, etc.)
+    - action    : 'accept' or 'deny'
+    - srcaddr   : source address object name
+    - dstaddr   : destination address object name
+    - service   : service name(s) — single (SSH) or multiple (SSH,HTTPS)
     - status    : 'enable' or 'disable'
     - name      : rename the policy
     """
@@ -330,12 +531,16 @@ def tool_update_policy(policy_id: int, action: str = "",
             data["action"] = action
         if srcaddr: data["srcaddr"] = [{"name": srcaddr}]
         if dstaddr: data["dstaddr"] = [{"name": dstaddr}]
-        if service: data["service"] = [{"name": service}]
+        if service:
+            # FIX: parse comma/space separated services into list of dicts
+            parts = [s.strip() for s in re.split(r'[,\s]+', service) if s.strip()]
+            data["service"] = [{"name": p} for p in parts]
         if not data:
             return "[ERROR] No fields to update were provided."
         r = update_policy(policy_id, data)
         if r.get("status") == "success":
-            return f"[SUCCESS] Policy ID {policy_id} updated successfully."
+            svc_display = service if service else "unchanged"
+            return f"[SUCCESS] Policy ID {policy_id} updated. Services: {svc_display}"
         return f"[ERROR] {r.get('cli_error', r)}"
     except Exception as exc:
         return f"[ERROR] {exc}"
@@ -645,6 +850,9 @@ ALL_TOOLS = [
     tool_list_interfaces,
     tool_list_users,
     tool_list_routes,
+    tool_get_address_usage,
+    tool_search_policies,
+    tool_get_service_usage,
     # Write — policies
     tool_create_policy,
     tool_update_policy,
@@ -667,3 +875,20 @@ ALL_TOOLS = [
 
 # Exported for use by agent.py and test suite
 TOOL_MAP = {t.name: t for t in ALL_TOOLS}
+
+
+# Exported constants — used by agent.py, app.py, and test suite
+TOOL_MAP = {t.name: t for t in ALL_TOOLS}
+
+WRITE_TOOLS = {
+    "tool_create_policy",
+    "tool_update_policy",
+    "tool_enable_disable_policy",
+    "tool_delete_policy",
+    "tool_move_policy",
+    "tool_create_address",
+    "tool_delete_address",
+    "tool_update_interface_access",
+    "tool_block_ip",
+    "tool_backup_config",
+}

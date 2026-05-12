@@ -457,38 +457,57 @@ def validate_create_address(params: dict) -> ValidationResult:
     return result
 
 
-def validate_delete_address(params: dict) -> ValidationResult:
-    result = ValidationResult()
-    clear_cache()
-
-    name = params.get("name", "").strip()
-    if not name:
-        result.add_error("Address name is required.")
-        return result
-
+def validate_delete_address(args: dict):
+    """
+    Validates delete_address operation.
+    Blocks deletion if address is still referenced by any policy.
+    """
+    name = args.get("name", "")
+    
+    # Existence check (existing)
     try:
-        if name not in _get_address_names():
-            result.add_error(f"Address object '{name}' does not exist.")
-            return result
-    except Exception as exc:
-        result.add_warning(f"Could not verify address: {exc}")
-
-    try:
-        used_in = []
-        for p in _get_existing_policies_full():
-            src = [a.get("name") for a in p.get("srcaddr", [])]
-            dst = [a.get("name") for a in p.get("dstaddr", [])]
-            if name in src or name in dst:
-                used_in.append(f"'{p.get('name')}' (ID:{p.get('policyid')})")
-        if used_in:
-            result.add_warning(
-                f"'{name}' is used in {len(used_in)} policy(ies): {', '.join(used_in)}. "
-                f"Deleting it may break these policies."
+        from modules.addresses import list_addresses
+        r       = list_addresses()
+        results = r if isinstance(r, list) else r.get("results", [])
+        names   = [a.get("name", "") for a in results]
+        if name not in names:
+            return ValidationResult(
+                valid=False,
+                messages=[f"Address '{name}' does not exist."],
             )
-    except Exception as exc:
-        result.add_warning(f"Could not check policy usage: {exc}")
-
-    return result
+    except Exception:
+        pass
+    
+    # NEW: Usage check — block if still referenced
+    try:
+        from modules.policies import get_address_usage
+        usage = get_address_usage(name)
+        count = usage.get("used_by_count", 0)
+        if count > 0:
+            policy_names = ", ".join(
+                f"{p['name']} (ID:{p['policyid']})"
+                for p in usage.get("used_by", [])[:5]
+            )
+            return ValidationResult(
+                valid=False,
+                messages=[
+                    f"Cannot delete address '{name}' — it is referenced by "
+                    f"{count} policy/policies: {policy_names}. "
+                    f"Remove it from those policies first."
+                ],
+            )
+    except Exception:
+        # Cannot check usage — show a warning but don't block
+        return ValidationResult(
+            valid=True,
+            messages=[],
+            warnings=[
+                f"Could not verify if '{name}' is referenced by policies. "
+                f"Deletion may affect existing policies."
+            ],
+        )
+    
+    return ValidationResult(valid=True, messages=[])
 
 
 def validate_update_interface_access(params: dict) -> ValidationResult:

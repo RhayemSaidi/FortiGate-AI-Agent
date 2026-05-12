@@ -1,522 +1,292 @@
+"""
+app.py — Streamlit UI for the FortiGate AI Agent.
+All logic is in agent/core.py. This file handles rendering only.
+"""
 import sys
 import os
+
+_ROOT      = os.path.dirname(os.path.abspath(__file__))
+_AGENT_DIR = os.path.join(_ROOT, "agent")
+sys.path.insert(0, _ROOT)
+sys.path.insert(0, _AGENT_DIR)
+
 import streamlit as st
+from core import AgentSession, ResponseKind
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent"))
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
-from agent.agent import (
-    build_llms, detect_intent, is_knowledge_question, is_write_intent,
-    extract_params, execute_tool, format_response, format_confirmation,
-    handle_confirmation_yes, handle_with_mistral, trim_conversation,
-)
-from agent.prompt import SYSTEM_PROMPT
-from agent.tools import TOOL_MAP, ALL_TOOLS
 from audit.logger import read_logs
 from modules.system import get_system_status
 from modules.monitor import get_cpu_usage, get_memory_usage
 from modules.policies import list_policies
-from audit.logger import log_action, log_conversation
 
 st.set_page_config(
     page_title="FortiGate AI Agent",
     layout="wide",
     initial_sidebar_state="expanded",
+    menu_items={}
 )
 
-# ── Minimal CSS — clean and professional ─────────────────
 st.markdown("""
 <style>
-    .stApp { background-color: #0d1117; color: #e6edf3; }
-    .main .block-container { padding: 1.5rem 2rem; max-width: 100%; }
-    .chat-user {
-        background: #1c2a3a;
-        border-left: 3px solid #1f6feb;
-        padding: 0.75rem 1rem;
-        border-radius: 4px;
-        margin: 0.5rem 0;
-        font-size: 0.95rem;
-    }
-    .chat-agent {
-        background: #161b22;
-        border-left: 3px solid #3fb950;
-        padding: 0.75rem 1rem;
-        border-radius: 4px;
-        margin: 0.5rem 0;
-        font-size: 0.95rem;
-        white-space: pre-wrap;
-    }
-    .confirm-box {
-        background: #1a1400;
-        border: 1px solid #d29922;
-        border-radius: 6px;
-        padding: 1rem 1.25rem;
-        margin: 0.75rem 0;
-        font-family: monospace;
-        font-size: 0.9rem;
-    }
-    .warning-box {
-        background: #1a0a00;
-        border: 1px solid #f85149;
-        border-radius: 6px;
-        padding: 1rem 1.25rem;
-        margin: 0.75rem 0;
-        font-size: 0.9rem;
-    }
-    .stat-card {
-        background: #161b22;
-        border: 1px solid #30363d;
-        border-radius: 6px;
-        padding: 0.75rem 1rem;
-        margin-bottom: 0.5rem;
-        font-size: 0.85rem;
-    }
-    #MainMenu, footer, header { visibility: hidden; }
-    .stTextInput > div > div > input {
-        background-color: #161b22;
-        color: #e6edf3;
-        border: 1px solid #30363d;
-    }
-    .stButton > button {
-        background-color: #1f6feb;
-        color: white;
-        border: none;
-        border-radius: 4px;
-        padding: 0.4rem 1.2rem;
-    }
-    .stButton > button:hover { background-color: #388bfd; }
-    button[kind="secondary"] {
-        background-color: #21262d !important;
-        color: #e6edf3 !important;
-        border: 1px solid #30363d !important;
-    }
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+*,*::before,*::after{box-sizing:border-box}
+html,body,.stApp{background:#0a0c0f;color:#c9d1d9;font-family:'IBM Plex Sans',sans-serif}
+#MainMenu,footer,header,[data-testid="stToolbar"],[data-testid="stDecoration"]{display:none!important}
+[data-testid="stSidebar"]{background:#0d1117;border-right:1px solid #1c2128}
+[data-testid="stSidebar"]>div{padding:1.5rem 1rem}
+.main .block-container{padding:0 2rem 2rem 2rem;max-width:100%}
+.app-header{display:flex;align-items:center;gap:.75rem;padding:1.25rem 0 1rem 0;border-bottom:1px solid #1c2128;margin-bottom:1.5rem}
+.app-header-title{font-size:.95rem;font-weight:500;color:#e6edf3;letter-spacing:.02em}
+.app-header-sub{font-size:.75rem;color:#484f58;margin-left:auto;font-family:'IBM Plex Mono',monospace}
+.status-dot{width:7px;height:7px;border-radius:50%;background:#3fb950;box-shadow:0 0 6px #3fb95088;flex-shrink:0}
+.msg-user{display:flex;justify-content:flex-end;margin:.75rem 0 .25rem 0}
+.msg-user-bubble{background:#1c2a3a;color:#cdd9e5;padding:.6rem 1rem;border-radius:14px 14px 2px 14px;max-width:72%;font-size:.9rem;line-height:1.5;border:1px solid #1f6feb22}
+.msg-agent{display:flex;align-items:flex-start;gap:.6rem;margin:.25rem 0 .75rem 0}
+.msg-agent-icon{width:24px;height:24px;border-radius:6px;background:linear-gradient(135deg,#1f6feb,#388bfd);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:.65rem;color:white;font-weight:700;font-family:'IBM Plex Mono',monospace;margin-top:.1rem}
+.msg-agent-content{background:#0d1117;color:#c9d1d9;padding:.6rem 1rem;border-radius:2px 14px 14px 14px;max-width:85%;font-size:.88rem;line-height:1.6;border:1px solid #1c2128;white-space:pre-wrap}
+.confirm-panel{background:#161005;border:1px solid #d2992244;border-radius:8px;padding:1rem 1.25rem;margin:.5rem 0 1rem 0;font-family:'IBM Plex Mono',monospace;font-size:.82rem}
+.confirm-title{color:#d29922;font-weight:500;font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.6rem}
+.warning-panel{background:#100a0a;border:1px solid #f8514944;border-radius:8px;padding:.75rem 1rem;margin:.5rem 0;font-size:.85rem;color:#ffa198}
+.stTextInput>div>div>input{background:#0d1117!important;color:#c9d1d9!important;border:1px solid #30363d!important;border-radius:8px!important;padding:.65rem 1rem!important;font-family:'IBM Plex Sans',sans-serif!important;font-size:.9rem!important}
+.stTextInput>div>div>input:focus{border-color:#1f6feb!important;box-shadow:0 0 0 3px #1f6feb18!important}
+.stTextInput>div>div>input::placeholder{color:#484f58!important}
+.stTextInput>label{display:none}
+.stButton>button{background:#1c2128!important;color:#8b949e!important;border:1px solid #30363d!important;border-radius:6px!important;font-size:.78rem!important;padding:.3rem .7rem!important}
+.stButton>button:hover{background:#21262d!important;color:#c9d1d9!important}
+button[kind="primary"]{background:#1f6feb!important;color:#fff!important;border-color:#1f6feb!important}
+button[kind="primary"]:hover{background:#388bfd!important}
+button[kind="secondary"]{background:#21262d!important;color:#e6edf3!important;border-color:#30363d!important}
+.sidebar-label{font-size:.65rem;text-transform:uppercase;letter-spacing:.1em;color:#484f58;margin:1rem 0 .4rem 0;font-family:'IBM Plex Mono',monospace}
+.stat-row{display:flex;justify-content:space-between;padding:.3rem 0;font-size:.8rem}
+.stat-label{color:#484f58}
+.stat-value{color:#c9d1d9;font-family:'IBM Plex Mono',monospace;font-size:.78rem}
+.policy-row{display:flex;align-items:center;gap:.5rem;padding:.35rem .5rem;border-radius:4px;font-size:.78rem;margin:.15rem 0}
+.policy-name{color:#c9d1d9;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.policy-badge{font-family:'IBM Plex Mono',monospace;font-size:.68rem;padding:.1rem .4rem;border-radius:3px}
+.badge-accept{background:#12261e;color:#3fb950}
+.badge-deny{background:#2d1117;color:#f85149}
+.badge-dis{background:#1c2128;color:#484f58}
+.bar-track{height:3px;background:#21262d;border-radius:2px;margin:.2rem 0 .6rem 0;overflow:hidden}
+.bar-cpu{height:100%;background:#1f6feb;border-radius:2px}
+.bar-mem{height:100%;background:#3fb950;border-radius:2px}
+.bar-warn{background:#d29922!important}
+.bar-crit{background:#f85149!important}
+.divider{height:1px;background:#1c2128;margin:.75rem 0}
+.audit-entry{padding:.3rem 0;border-bottom:1px solid #1c2128;font-size:.75rem}
+.audit-ts{color:#484f58;font-family:'IBM Plex Mono',monospace;font-size:.7rem}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:#21262d;border-radius:2px}
 </style>
 """, unsafe_allow_html=True)
 
-
 # ── Session state ─────────────────────────────────────────
-if "conversation" not in st.session_state:
-    st.session_state.conversation = [SystemMessage(content=SYSTEM_PROMPT)]
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
-if "pending_confirmation" not in st.session_state:
-    st.session_state.pending_confirmation = None
-if "llms_built" not in st.session_state:
-    llm_tools, llm_plain = build_llms()
-    st.session_state.llm_tools = llm_tools
-    st.session_state.llm_plain = llm_plain
-    st.session_state.llms_built = True
+if "session" not in st.session_state:
+    st.session_state.session = AgentSession()
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "show_suggestions" not in st.session_state:
+    st.session_state.show_suggestions = True
+if "input_key" not in st.session_state:
+    st.session_state.input_key = 0
 
 
-# ── Helpers ───────────────────────────────────────────────
-
-def add_message(role: str, content: str, msg_type: str = "normal"):
-    st.session_state.chat_history.append({
-        "role":    role,
-        "content": content,
-        "type":    msg_type,
-    })
+def _add(role, content, kind="answer"):
+    st.session_state.messages.append({"role": role, "content": content, "kind": kind})
 
 
-def process_message(user_input: str):
-    """
-    Main message processing pipeline — mirrors agent.py logic
-    but stores results in session state instead of printing.
-    """
-    add_message("user", user_input)
-    conv      = st.session_state.conversation
-    llm_plain = st.session_state.llm_plain
-    llm_tools = st.session_state.llm_tools
-
+def _send(text: str):
+    if not text.strip():
+        return
+    st.session_state.show_suggestions = False
+    _add("user", text)
     try:
-        if is_knowledge_question(user_input):
-            from agent.tools import tool_search_knowledge as _sk
-            tool_result = str(_sk.invoke({"query": user_input}))
-            log_action(
-                action="TOOL_SEARCH_KNOWLEDGE",
-                user_input=user_input,
-                tool_called="tool_search_knowledge",
-                tool_input=user_input,
-                result=tool_result,
-                status="success",
-            )
-            answer = format_response(llm_plain, conv, tool_result, user_input)
-            conv.append(HumanMessage(content=user_input))
-            conv.append(AIMessage(content=answer))
-            add_message("agent", answer)
-            log_conversation(user_input, answer)
-            return
-
-        intent = detect_intent(user_input)
-
-        if intent:
-            tool_name, tool_args = intent
-
-            if tool_name in WRITE_TOOLS and tool_args is None:
-                tool_args = extract_params(tool_name, user_input, llm_plain)
-
-                if tool_args is None:
-                    missing = {
-                        "tool_create_policy":
-                            "Please provide: policy name, interfaces, service, action.",
-                        "tool_create_address":
-                            "Please provide: address name and subnet (e.g. 192.168.1.0/24).",
-                        "tool_delete_address":
-                            "Please provide the exact name of the address to delete.",
-                        "tool_delete_policy":
-                            "Please provide the policy ID or name.",
-                        "tool_enable_disable_policy":
-                            "Please provide the policy ID or name.\nExample: enable policy 4",
-                        "tool_move_policy":
-                            "Example: move policy 3 before policy 1",
-                        "tool_block_ip":
-                            "Please provide the IP address.\nExample: block ip 192.168.1.55",
-                        "tool_update_interface_access":
-                            "Example: disable HTTP and TELNET on port2",
-                    }
-                    msg = missing.get(tool_name, "Please provide required details.")
-                    add_message("agent", msg)
-                    return
-
-            if tool_name in WRITE_TOOLS:
-                confirmation_text = format_confirmation(tool_name, tool_args)
-                st.session_state.pending_confirmation = {
-                    "name":           tool_name,
-                    "args":           tool_args,
-                    "original_input": user_input,
-                    "warnings_shown": False,
-                }
-                add_message("agent", confirmation_text, "confirmation")
-                return
-
-            # Read tool
-            tool_result = execute_tool(tool_name, tool_args, user_input)
-            answer = format_response(llm_plain, conv, tool_result, user_input)
-            conv.append(HumanMessage(content=user_input))
-            conv.append(AIMessage(content=answer))
-            add_message("agent", answer)
-            log_conversation(user_input, answer)
-
-        else:
-            pending_ref = [None]
-            handle_with_mistral(user_input, conv, llm_tools, llm_plain, pending_ref)
-            if pending_ref[0]:
-                pc = pending_ref[0]
-                confirmation_text = format_confirmation(pc["name"], pc["args"])
-                st.session_state.pending_confirmation = {
-                    "name":           pc["name"],
-                    "args":           pc["args"],
-                    "original_input": user_input,
-                    "warnings_shown": False,
-                }
-                add_message("agent", confirmation_text, "confirmation")
-            else:
-                # Get last AI message from conversation
-                ai_msgs = [m for m in conv if isinstance(m, AIMessage)]
-                if ai_msgs:
-                    last = ai_msgs[-1].content
-                    add_message("agent", last)
-
+        resp = st.session_state.session.process(text)
+        _add("agent", resp.text, resp.kind.value)
     except Exception as exc:
-        st.session_state.pending_confirmation = None
-        add_message("agent", f"Error: {str(exc)}", "error")
+        _add("agent", f"Error: {exc}", "error")
+    st.session_state.input_key += 1
 
 
-def handle_confirm():
-    pc        = st.session_state.pending_confirmation
-    conv      = st.session_state.conversation
-    llm_plain = st.session_state.llm_plain
-
-    stay, updated = handle_confirmation_yes(pc, conv, llm_plain)
-    st.session_state.pending_confirmation = updated
-
-    if not stay:
-        # Get the answer that was added to conversation
-        ai_msgs = [m for m in conv if isinstance(m, AIMessage)]
-        if ai_msgs:
-            add_message("agent", ai_msgs[-1].content)
+def _confirm():
+    try:
+        resp = st.session_state.session.process("yes")
+        _add("agent", resp.text, resp.kind.value)
+    except Exception as exc:
+        _add("agent", f"Error: {exc}", "error")
+    st.session_state.input_key += 1
 
 
-def handle_cancel():
-    pc = st.session_state.pending_confirmation
-    if pc:
-        log_action(
-            action="CANCELLED",
-            user_input=pc.get("original_input", ""),
-            tool_called=pc["name"],
-            tool_input=str(pc["args"]),
-            result="User cancelled",
-            status="cancelled",
-        )
-    add_message("agent", "Action cancelled.")
-    st.session_state.pending_confirmation = None
+def _cancel():
+    try:
+        resp = st.session_state.session.process("no")
+        _add("agent", resp.text, resp.kind.value)
+    except Exception as exc:
+        _add("agent", f"Error: {exc}", "error")
+    st.session_state.input_key += 1
 
 
 # ── Sidebar ───────────────────────────────────────────────
+with st.sidebar:
+    st.markdown('<div class="sidebar-label">System</div>', unsafe_allow_html=True)
+    try:
+        r   = get_system_status()
+        res = r.get("results", {})
+        st.markdown(
+            f'<div class="stat-row"><span class="stat-label">Host</span><span class="stat-value">{res.get("hostname","—")}</span></div>'
+            f'<div class="stat-row"><span class="stat-label">Model</span><span class="stat-value">{res.get("model_name","—")}</span></div>'
+            f'<div class="stat-row"><span class="stat-label">Version</span><span class="stat-value">{r.get("version","—")}</span></div>',
+            unsafe_allow_html=True
+        )
+    except Exception:
+        st.markdown('<span style="color:#484f58;font-size:.78rem">Unreachable</span>', unsafe_allow_html=True)
 
-def render_sidebar():
-    with st.sidebar:
-        st.markdown("### FortiGate Status")
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-label">Resources</div>', unsafe_allow_html=True)
+    try:
+        cpu = get_cpu_usage()["results"]["cpu"][0]["current"]
+        mem = get_memory_usage()["results"]["mem"][0]["current"]
+        cc  = "bar-crit" if cpu > 85 else ("bar-warn" if cpu > 65 else "bar-cpu")
+        mc  = "bar-crit" if mem > 85 else ("bar-warn" if mem > 65 else "bar-mem")
+        st.markdown(
+            f'<div class="stat-row"><span class="stat-label">CPU</span><span class="stat-value">{cpu}%</span></div>'
+            f'<div class="bar-track"><div class="{cc}" style="width:{cpu}%"></div></div>'
+            f'<div class="stat-row"><span class="stat-label">Memory</span><span class="stat-value">{mem}%</span></div>'
+            f'<div class="bar-track"><div class="{mc}" style="width:{mem}%"></div></div>',
+            unsafe_allow_html=True
+        )
+    except Exception:
+        st.markdown('<span style="color:#484f58;font-size:.78rem">Unavailable</span>', unsafe_allow_html=True)
 
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Refresh", use_container_width=True):
-                st.rerun()
-        with col2:
-            if st.button("Clear chat", use_container_width=True):
-                st.session_state.chat_history = []
-                st.session_state.conversation = [SystemMessage(content=SYSTEM_PROMPT)]
-                st.session_state.pending_confirmation = None
-                st.rerun()
-
-        st.markdown("---")
-
-        try:
-            r   = get_system_status()
-            res = r.get("results", {})
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-label">Policies</div>', unsafe_allow_html=True)
+    try:
+        r       = list_policies()
+        results = r if isinstance(r, list) else r.get("results", [])
+        for p in results:
+            action   = p.get("action","?")
+            disabled = p.get("status","enable") == "disable"
+            badge    = "badge-dis" if disabled else ("badge-deny" if action == "deny" else "badge-accept")
+            badge_t  = "DIS" if disabled else action.upper()
             st.markdown(
-                f'<div class="stat-card">'
-                f'<b>Hostname</b>: {res.get("hostname","N/A")}<br>'
-                f'<b>Model</b>: {res.get("model_name","N/A")}<br>'
-                f'<b>Version</b>: {r.get("version","N/A")}'
-                f'</div>',
+                f'<div class="policy-row">'
+                f'<span style="color:#484f58;font-family:IBM Plex Mono,monospace;font-size:.68rem">#{p.get("policyid")}</span>'
+                f'<span class="policy-name">{p.get("name")}</span>'
+                f'<span class="policy-badge {badge}">{badge_t}</span>'
+                f'</div>', unsafe_allow_html=True
+            )
+    except Exception:
+        st.markdown('<span style="color:#484f58;font-size:.78rem">Unavailable</span>', unsafe_allow_html=True)
+
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-label">Recent Actions</div>', unsafe_allow_html=True)
+    try:
+        logs = [l for l in read_logs(limit=20) if l.get("type") == "action"][-5:]
+        for e in reversed(logs):
+            ok  = e.get("status") == "success"
+            dot = '<span style="color:#3fb950">&#9679;</span>' if ok else '<span style="color:#f85149">&#9679;</span>'
+            ts  = e.get("timestamp","")[:16].replace("T"," ")
+            st.markdown(
+                f'<div class="audit-entry">{dot} <span style="color:#c9d1d9">{e.get("action","?")}</span><br>'
+                f'<span class="audit-ts">{ts}</span></div>',
                 unsafe_allow_html=True
             )
-        except Exception:
-            st.error("Cannot reach FortiGate")
+    except Exception:
+        pass
 
-        try:
-            cpu_data = get_cpu_usage()
-            mem_data = get_memory_usage()
-            cpu = cpu_data["results"]["cpu"][0]["current"]
-            mem = mem_data["results"]["mem"][0]["current"]
-
-            c1, c2 = st.columns(2)
-            c1.metric("CPU", f"{cpu}%")
-            c2.metric("Memory", f"{mem}%")
-            st.progress(cpu / 100)
-            st.progress(mem / 100)
-        except Exception:
-            st.warning("Resource stats unavailable")
-
-        st.markdown("---")
-        st.markdown("### Firewall Policies")
-
-        try:
-            r       = list_policies()
-            results = r if isinstance(r, list) else r.get("results", [])
-            for p in results:
-                action   = p.get("action", "?")
-                status   = p.get("status", "enable")
-                color    = "#f85149" if action == "deny" else "#3fb950"
-                disabled = " (disabled)" if status == "disable" else ""
-                st.markdown(
-                    f'<div class="stat-card">'
-                    f'<span style="color:{color}">&#9679;</span> '
-                    f'[{p.get("policyid")}] {p.get("name")}'
-                    f'<br><small>{action.upper()}{disabled}</small>'
-                    f'</div>',
-                    unsafe_allow_html=True
-                )
-        except Exception:
-            st.warning("Could not load policies")
-
-        st.markdown("---")
-        st.markdown("### Recent Actions")
-
-        try:
-            logs      = read_logs(limit=20)
-            tool_logs = [l for l in logs if l.get("type") == "action"][-5:]
-            for entry in reversed(tool_logs):
-                ts     = entry.get("timestamp","")[:16].replace("T"," ")
-                action = entry.get("action","?")
-                status = entry.get("status","?")
-                color  = "#3fb950" if status == "success" else "#f85149"
-                st.markdown(
-                    f'<small><span style="color:{color}">[{status.upper()[:2]}]</span>'
-                    f' {ts}<br>{action}</small>',
-                    unsafe_allow_html=True
-                )
-        except Exception:
-            pass
-
-
-# ── Chat display ──────────────────────────────────────────
-
-def render_chat():
-    for msg in st.session_state.chat_history:
-        role     = msg["role"]
-        content  = msg["content"]
-        msg_type = msg.get("type", "normal")
-
-        if role == "user":
-            st.markdown(
-                f'<div class="chat-user"><b>You:</b> {content}</div>',
-                unsafe_allow_html=True
-            )
-        elif role == "agent":
-            if msg_type == "confirmation":
-                st.markdown(
-                    f'<div class="confirm-box">{content}</div>',
-                    unsafe_allow_html=True
-                )
-            elif msg_type == "error":
-                st.markdown(
-                    f'<div class="warning-box">{content}</div>',
-                    unsafe_allow_html=True
-                )
-            else:
-                st.markdown(
-                    f'<div class="chat-agent">{content}</div>',
-                    unsafe_allow_html=True
-                )
-
-
-# ── Confirmation panel ────────────────────────────────────
-
-def render_confirmation_panel():
-    pc = st.session_state.pending_confirmation
-    if not pc:
-        return
-
-    args           = pc["args"]
-    tool_name      = pc["name"]
-    warnings_shown = pc.get("warnings_shown", False)
-
-    title = "Security Warning — Proceed?" if warnings_shown else "Confirm Action"
-
-    with st.container():
-        st.markdown(f"**{title}**")
-
-        if not warnings_shown:
-            lines = []
-            if tool_name == "tool_create_policy":
-                lines = [
-                    f"Action    : CREATE policy",
-                    f"Name      : {args.get('name','?')}",
-                    f"Interfaces: {args.get('srcintf','?')} -> {args.get('dstintf','?')}",
-                    f"Service   : {args.get('service','ALL')}",
-                    f"Action    : {args.get('action','accept').upper()}",
-                ]
-            elif tool_name == "tool_delete_policy":
-                lines = [
-                    f"Action    : DELETE policy ID {args.get('policy_id','?')}",
-                    "WARNING: This cannot be undone.",
-                ]
-            elif tool_name == "tool_enable_disable_policy":
-                verb = args.get("status","?").upper()
-                lines = [f"Action: {verb} policy ID {args.get('policy_id','?')}"]
-            elif tool_name == "tool_move_policy":
-                lines = [
-                    f"Action: MOVE policy {args.get('policy_id','?')} "
-                    f"{args.get('move_action','?')} policy {args.get('neighbor_id','?')}"
-                ]
-            elif tool_name == "tool_create_address":
-                lines = [
-                    f"Action : CREATE address",
-                    f"Name   : {args.get('name','?')}",
-                    f"Subnet : {args.get('subnet','?')}",
-                ]
-            elif tool_name == "tool_delete_address":
-                lines = [
-                    f"Action : DELETE address '{args.get('name','?')}'",
-                    "WARNING: This cannot be undone.",
-                ]
-            elif tool_name == "tool_update_interface_access":
-                lines = [
-                    f"Action    : UPDATE interface {args.get('name','?')}",
-                    f"Allow only: {args.get('allowaccess','?').upper()}",
-                ]
-            elif tool_name == "tool_block_ip":
-                lines = [
-                    f"Action   : BLOCK {args.get('ip_address','?')}",
-                    f"Direction: {args.get('direction','both')}",
-                ]
-            elif tool_name == "tool_backup_config":
-                lines = ["Action: BACKUP configuration"]
-
-            for line in lines:
-                st.text(line)
-
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Confirm", type="primary", use_container_width=True,
-                         key="btn_confirm"):
-                handle_confirm()
-                st.rerun()
-        with col2:
-            if st.button("Cancel", use_container_width=True,
-                         key="btn_cancel"):
-                handle_cancel()
-                st.rerun()
-
-
-# ── Quick action buttons ──────────────────────────────────
-
-def render_quick_actions():
-    st.markdown("Quick actions:")
-    cols = st.columns(5)
-    actions = [
-        "list all policies",
-        "show all interfaces",
-        "check cpu and memory",
-        "analyze firewall security",
-        "list all addresses",
-    ]
-    for i, action in enumerate(actions):
-        with cols[i]:
-            if st.button(action, use_container_width=True,
-                         key=f"quick_{i}"):
-                process_message(action)
-                st.rerun()
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("Refresh", use_container_width=True):
+            st.rerun()
+    with c2:
+        if st.button("Clear", use_container_width=True):
+            st.session_state.session = AgentSession()
+            st.session_state.messages = []
+            st.session_state.show_suggestions = True
+            st.session_state.input_key += 1
+            st.rerun()
 
 
 # ── Main ──────────────────────────────────────────────────
+st.markdown(
+    '<div class="app-header">'
+    '<div class="status-dot"></div>'
+    '<span class="app-header-title">FortiGate AI Agent</span>'
+    '<span class="app-header-sub">Mistral AI · FortiOS Knowledge Base</span>'
+    '</div>',
+    unsafe_allow_html=True
+)
 
-def main():
-    render_sidebar()
-    st.session_state.conversation = trim_conversation(
-        st.session_state.conversation
+for msg in st.session_state.messages:
+    role    = msg["role"]
+    content = msg["content"]
+    kind    = msg.get("kind","answer")
+
+    if role == "user":
+        st.markdown(
+            f'<div class="msg-user"><div class="msg-user-bubble">{content}</div></div>',
+            unsafe_allow_html=True
+        )
+    else:
+        if kind == "confirmation":
+            st.markdown(
+                f'<div class="confirm-panel"><div class="confirm-title">Confirmation required</div>'
+                f'<pre style="margin:0;color:#c9d1d9;white-space:pre-wrap;font-size:.8rem">{content}</pre></div>',
+                unsafe_allow_html=True
+            )
+        elif kind in ("blocked","error"):
+            st.markdown(f'<div class="warning-panel">{content}</div>', unsafe_allow_html=True)
+        elif kind == "warning":
+            st.markdown(
+                f'<div class="confirm-panel"><div class="confirm-title">Security warning — review before proceeding</div>'
+                f'<pre style="margin:0;color:#ffa198;white-space:pre-wrap;font-size:.8rem">{content}</pre></div>',
+                unsafe_allow_html=True
+            )
+        else:
+            safe = content.replace("<","&lt;").replace(">","&gt;")
+            st.markdown(
+                f'<div class="msg-agent"><div class="msg-agent-icon">FG</div>'
+                f'<div class="msg-agent-content">{safe}</div></div>',
+                unsafe_allow_html=True
+            )
+
+if st.session_state.session.has_pending:
+    c1, c2, _ = st.columns([1, 1, 7])
+    with c1:
+        if st.button("Confirm", type="primary", key="btn_yes"):
+            _confirm()
+            st.rerun()
+    with c2:
+        if st.button("Cancel", type="secondary", key="btn_no"):
+            _cancel()
+            st.rerun()
+
+st.markdown("---")
+col_in, col_send = st.columns([8, 1])
+with col_in:
+    user_input = st.text_input(
+        "msg", placeholder="Ask anything about your FortiGate...",
+        key=f"inp_{st.session_state.input_key}",
+        label_visibility="collapsed",
+        disabled=st.session_state.session.has_pending,
+    )
+with col_send:
+    submitted = st.button(
+        "Send", type="primary", use_container_width=True,
+        disabled=st.session_state.session.has_pending,
     )
 
-    st.markdown("## FortiGate AI Agent")
-    st.caption("Powered by Mistral AI and FortiOS Knowledge Base")
-    st.markdown("---")
+if submitted and user_input and user_input.strip():
+    _send(user_input.strip())
+    st.rerun()
 
-    # Chat history
-    render_chat()
-
-    # Confirmation panel (if active)
-    render_confirmation_panel()
-
-    # Input area
-    st.markdown("---")
-    col1, col2 = st.columns([6, 1])
-    with col1:
-        user_input = st.text_input(
-            "Message",
-            placeholder="Ask anything about your FortiGate...",
-            key="user_input",
-            label_visibility="collapsed",
-            disabled=st.session_state.pending_confirmation is not None,
-        )
-    with col2:
-        send = st.button(
-            "Send",
-            type="primary",
-            use_container_width=True,
-            disabled=st.session_state.pending_confirmation is not None,
-        )
-
-    if send and user_input.strip():
-        process_message(user_input.strip())
-        st.rerun()
-
-    # Quick actions (disabled during confirmation)
-    if not st.session_state.pending_confirmation:
-        render_quick_actions()
-
-
-if __name__ == "__main__":
-    main()
+if st.session_state.show_suggestions and not st.session_state.session.has_pending:
+    suggestions = [
+        "list all policies", "analyze firewall security",
+        "check cpu and memory", "show all interfaces",
+        "what does error -651 mean?", "how to create a VLAN?",
+    ]
+    cols = st.columns(len(suggestions))
+    for i, s in enumerate(suggestions):
+        with cols[i]:
+            if st.button(s, key=f"sug_{i}", use_container_width=True):
+                _send(s)
+                st.rerun()
