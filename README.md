@@ -1,5 +1,5 @@
 <div align="center">
-  <h1>🛡️ FortiGate AI Agent</h1>
+  <h1>FortiGate AI Agent</h1>
   <p><strong>Deterministic AI Orchestration for FortiOS Network Control Planes</strong></p>
   
   [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
