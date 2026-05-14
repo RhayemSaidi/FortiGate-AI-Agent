@@ -343,6 +343,12 @@ _KNOWLEDGE_STARTERS = [
     re.compile(r'\bmanual\b|\bguide\b', re.I),
     re.compile(r'\bwhat\s+(is\s+meant\s+by|does\s+it\s+mean)\b', re.I),
     re.compile(r'\bsignification\b|\bmeaning\b', re.I),
+    re.compile(r'\b(cli\s+command|command\s+line|fortigate\s+cli|using\s+(the\s+)?cli)\b', re.I),
+    re.compile(r'\bwhat\s+(command|cli)\b', re.I),
+    re.compile(r'\bhow\s+do\s+i\s+(know|check|see|find|show|verify|get)\b', re.I),
+    re.compile(r'\bwhat\s+is\s+the\s+cli\b', re.I),
+    re.compile(r'\bcommande\s+cli\b', re.I),
+    re.compile(r'\bhow\s+to\s+(check|view|show|see|find|verify)\b', re.I),
 ]
 
 # Entity indicators: the presence of these patterns in the text
@@ -352,10 +358,9 @@ _KNOWLEDGE_STARTERS = [
 _LIVE_ENTITY_INDICATORS = re.compile(
     r'\b('
     r'policy\s+\d+'
-    r'|policy\s+[A-Za-z][A-Za-z0-9_\-]+'
-    r'|polic\w*\s+\d+'
-    r'|polic\w*\s+[A-Za-z][A-Za-z0-9_\-]+'
+    r'|policy\s+(?!in\b|on\b|for\b|with\b|and\b|or\b)[A-Za-z][A-Za-z0-9_\-]+'
     r'|rule\s+\d+'
+    r'|rule\s+(?!in\b|on\b|for\b|with\b|and\b|or\b)[A-Za-z][A-Za-z0-9_\-]+'
     r'|interface\s+\w+'
     r'|address\s+\w+'
     r'|port\d+'

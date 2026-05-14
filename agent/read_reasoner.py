@@ -227,46 +227,36 @@ def _build_read_plan_deterministic(
     # First try to extract a service name from the text
     svc = _extract_service_name(t)
 
-    # Patterns that indicate a service-filtered policy search
-    _SERVICE_FILTER_PATTERNS = [
-        # "show policies with HTTP service"
-        re.compile(r'\b(show|list|display|find|get|afficher|lister)\b.*\bpolic\w*\b.*\b(service|protocol)\b', re.I),
-        # "show the policies that has HTTP"
-        re.compile(r'\bpolic\w*\s+that\s+(has?|have|use|contain|include)\b', re.I),
-        # "policies with HTTP"
-        re.compile(r'\bpolic\w*\s+(with|using|for|having|containing)\b', re.I),
-        # "which policies use HTTP" / "what policies have SSH"
-        re.compile(r'\b(which|what)\s+polic\w*\s+(use|have|contain|include|allow|block)\b', re.I),
-        # "policies using HTTP" / "policies allowing SSH"
-        re.compile(r'\bpolic\w*\s+(using|allowing|blocking|denying)\b', re.I),
-        # French: "politiques qui utilisent SSH" / "règles avec HTTP"
-        re.compile(r'\bpolitiques?\s+(qui|avec|utilisant|contenant)\b', re.I),
-        re.compile(r'\br[eè]gles?\s+(qui|avec|utilisant|contenant)\b', re.I),
-        # "find SSH policies" / "show HTTP policies"
-        re.compile(r'\b(find|show|list|display)\s+\w+\s+polic\w*\b', re.I),
-    ]
+    if svc:
+        # Service name found — now check if user is asking to filter by it
+        _SERVICE_FILTER_PATTERNS = [
+            re.compile(r'\bpolic\w*\b.*\b(service|protocol|using|with|that\s+ha[sv]e?|allow\w*)\b', re.I),
+            re.compile(r'\bpolic\w*\s+that\s+(ha[sv]e?|use|contain|include|allow)\b', re.I),
+            re.compile(r'\b(which|what|show|list|find)\b.*\bpolic\w*\b', re.I),
+            re.compile(r'\bpolitiques?\s+(qui|avec|utilisant|contenant)\b', re.I),
+            re.compile(r'\b(find|show|list|display)\s+\w+\s+polic\w*\b', re.I),
+        ]
+        if any(p.search(t) for p in _SERVICE_FILTER_PATTERNS):
+            return ReadPlan(
+                ReadIntent.SEARCH_POLICIES,
+                "tool_search_policies",
+                {"service": svc},
+                hint=f"policies using service {svc}",
+            )
 
-    if svc and any(p.search(t) for p in _SERVICE_FILTER_PATTERNS):
-        return ReadPlan(
-            ReadIntent.SEARCH_POLICIES,
-            "tool_search_policies",
-            {"service": svc},
-            hint=f"policies using service {svc}",
-        )
-
-    # ── Status-filtered policy lists ───────────────────────
-    if (
-        re.search(r'\b(enabled?|active|activ[eé])\s+polic\w*\b', t, re.I)
-        or re.search(r'\bpolic\w*\s+that\s+are\s+(enabled?|active)\b', t, re.I)
-        or re.search(r'\bpolitiques?\s+(activ[eé]es?)\b', t, re.I)
-        or re.search(r'\bshow\s+(?:the\s+|all\s+)?(?:currently\s+)?enabled\s+polic\w*\b', t, re.I)
-    ):
-        return ReadPlan(
-            ReadIntent.SEARCH_POLICIES,
-            "tool_search_policies",
-            {"status": "enable"},
-            hint="enabled policies only",
-        )
+        # ── Status-filtered policy lists ───────────────────────
+        if (
+            re.search(r'\b(enabled?|active|activ[eé])\s+polic\w*\b', t, re.I)
+            or re.search(r'\bpolic\w*\s+that\s+are\s+(enabled?|active)\b', t, re.I)
+            or re.search(r'\bpolitiques?\s+(activ[eé]es?)\b', t, re.I)
+            or re.search(r'\bshow\s+(?:the\s+|all\s+)?(?:currently\s+)?enabled\s+polic\w*\b', t, re.I)
+        ):
+            return ReadPlan(
+                ReadIntent.SEARCH_POLICIES,
+                "tool_search_policies",
+                {"status": "enable"},
+                hint="enabled policies only",
+            )
 
     if (
         re.search(r'\b(disabled?|inactive|inactiv\w*)\s+polic\w*\b', t, re.I)
@@ -477,6 +467,7 @@ Available tools:
                              {"srcintf":"port1"}
                              {"dstintf":"wan1"}
                              {"nat":"enable"}
+                             {"name":"BlockSSH"}
                              (combine multiple filters in one args dict)
   "tool_get_policy_details"  {"policy_id": <int>}   — full details of one policy
   "tool_get_address_usage"   {"address_name":"X"}   — which policies use address X
@@ -485,21 +476,26 @@ Available tools:
   "tool_list_interfaces"     {}                     — list interfaces
   "tool_list_users"          {}                     — list local users
   "tool_list_routes"         {}                     — list static routes
+  "tool_list_services"       {}                     — list custom service objects
   "tool_get_system_status"   {}                     — firmware, hostname, model
   "tool_get_cpu_memory"      {}                     — CPU and memory usage
   "tool_get_vpn_status"      {}                     — VPN tunnel status
   "tool_get_active_sessions" {}                     — active session count
+  "tool_get_bandwidth_usage" {}                     — per-interface bandwidth (TX/RX)
+  "tool_get_traffic_logs"    {}                     — recent firewall traffic log entries
+  "tool_get_threat_logs"     {}                     — recent IPS/threat detection logs
+  "tool_get_event_logs"      {}                     — recent system/admin event logs
 
 CRITICAL RULES:
 1. "show policies with HTTP service" / "policies that have SSH" → tool_search_policies with {"service":"HTTP"}
 2. "show enabled policies" → tool_search_policies with {"status":"enable"}
 3. "show deny policies" → tool_search_policies with {"action":"deny"}
-4. "what does policy X do" → tool_get_policy_details with the policy's numeric ID
+4. "what does policy X do" → tool_get_policy_details with the policy_id
 5. "which policies use address WebServer" → tool_get_address_usage
 6. "policies using SSH service" → tool_search_policies with {"service":"SSH"}
-7. NEVER use tool_list_policies when a filter is needed — use tool_search_policies instead
-8. For policy name without ID: use tool_get_policy_details with policy_id=null
-   and the caller will handle name resolution
+7. "does test1 have http" → tool_search_policies with {"name": "test1", "service": "HTTP"}
+8. NEVER use tool_list_policies when a filter is needed — use tool_search_policies instead
+9. For policy name without ID: use tool_search_policies with {"name": "<policy_name>"} OR tool_get_policy_details with policy_id=null
 
 Service name normalisation:
   "web" or "http" → "HTTP"

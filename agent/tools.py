@@ -835,6 +835,321 @@ def tool_analyze_security(input: str = "") -> str:
         return f"[ERROR] Security analysis failed: {exc}"
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  OBSERVABILITY TOOLS — Log analysis
+# ══════════════════════════════════════════════════════════════════════════════
+
+@tool
+def tool_get_traffic_logs(input: str = "") -> str:
+    """
+    Retrieve the 50 most recent firewall traffic log entries.
+    Shows source/destination IPs, ports, policy matched, and allow/deny action.
+    Use when asked about recent traffic, connection history, or what traffic passed.
+    """
+    try:
+        from modules.logs import get_traffic_logs
+        r = get_traffic_logs()
+        logs = r if isinstance(r, list) else r.get("results", [])
+        if not logs:
+            return "[SUCCESS] No traffic log entries found."
+        lines = ["Recent Traffic Logs (last 50):", ""]
+        for e in logs[:50]:
+            src  = e.get("srcip", e.get("src", "?"))
+            dst  = e.get("dstip", e.get("dst", "?"))
+            port = e.get("dstport", "?")
+            act  = e.get("action", "?").upper()
+            pol  = e.get("policyid", e.get("policy", "?"))
+            svc  = e.get("service", e.get("proto", "?"))
+            ts   = e.get("date", "") + " " + e.get("time", "")
+            lines.append(
+                f"  {ts:<20} {src:<18} → {dst:<18}:{port:<6} "
+                f"svc={svc:<10} policy={pol:<4} {act}"
+            )
+        return "\n".join(lines)
+    except Exception as exc:
+        return f"[ERROR] {exc}"
+
+
+@tool
+def tool_get_threat_logs(input: str = "") -> str:
+    """
+    Retrieve the 50 most recent IPS/threat detection log entries.
+    Shows attacker IP, victim IP, attack name, severity, and action taken.
+    Use when asked about intrusion attempts, threats, attacks, or IPS alerts.
+    """
+    try:
+        from modules.logs import get_threat_logs
+        r = get_threat_logs()
+        logs = r if isinstance(r, list) else r.get("results", [])
+        if not logs:
+            return "[SUCCESS] No threat log entries found."
+        lines = ["Recent Threat Logs (last 50):", ""]
+        for e in logs[:50]:
+            src      = e.get("srcip",    "?")
+            dst      = e.get("dstip",    "?")
+            attack   = e.get("attack",   e.get("msg", "?"))
+            severity = e.get("severity", "?").upper()
+            action   = e.get("action",   "?").upper()
+            ts       = e.get("date", "") + " " + e.get("time", "")
+            lines.append(
+                f"  {ts:<20} [{severity:<8}] {src:<18} → {dst:<18} "
+                f"{attack:<40} action={action}"
+            )
+        return "\n".join(lines)
+    except Exception as exc:
+        return f"[ERROR] {exc}"
+
+
+@tool
+def tool_get_event_logs(input: str = "") -> str:
+    """
+    Retrieve the 50 most recent system event log entries.
+    Shows admin logins, configuration changes, system events, and failures.
+    Use when asked about admin activity, config changes, or system events.
+    """
+    try:
+        from modules.logs import get_event_logs
+        r = get_event_logs()
+        logs = r if isinstance(r, list) else r.get("results", [])
+        if not logs:
+            return "[SUCCESS] No event log entries found."
+        lines = ["Recent Event Logs (last 50):", ""]
+        for e in logs[:50]:
+            user  = e.get("user",    e.get("admin", "system"))
+            msg   = e.get("msg",     e.get("logdesc", "?"))
+            level = e.get("level",   "?").upper()
+            ts    = e.get("date", "") + " " + e.get("time", "")
+            lines.append(f"  {ts:<20} [{level:<8}] user={user:<15} {msg}")
+        return "\n".join(lines)
+    except Exception as exc:
+        return f"[ERROR] {exc}"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  MONITORING TOOLS — Network performance
+# ══════════════════════════════════════════════════════════════════════════════
+
+@tool
+def tool_get_bandwidth_usage(input: str = "") -> str:
+    """
+    Get real-time bandwidth utilisation per interface (TX and RX in Mbps/Kbps).
+    Use when asked about network throughput, bandwidth, traffic load, or interface speed.
+    """
+    try:
+        from modules.monitor import get_bandwidth
+        r       = get_bandwidth()
+        results = r if isinstance(r, list) else r.get("results", [])
+        if not results:
+            return "[SUCCESS] No bandwidth data available."
+        lines = ["Interface Bandwidth Usage:", ""]
+        for iface in results:
+            name = iface.get("id", iface.get("name", "?"))
+            tx   = iface.get("tx_bytes", iface.get("tx_byte", 0))
+            rx   = iface.get("rx_bytes", iface.get("rx_byte", 0))
+            def _fmt(b):
+                b = int(b) if b else 0
+                if b >= 1_000_000:
+                    return f"{b/1_000_000:.1f} MB/s"
+                elif b >= 1_000:
+                    return f"{b/1_000:.1f} KB/s"
+                return f"{b} B/s"
+            lines.append(f"  {name:<20} TX: {_fmt(tx):<15} RX: {_fmt(rx)}")
+        return "\n".join(lines)
+    except Exception as exc:
+        return f"[ERROR] {exc}"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  ROUTE WRITE TOOLS
+# ══════════════════════════════════════════════════════════════════════════════
+
+@tool
+def tool_create_route(dst: str, gateway: str, device: str, netmask: str = "255.255.255.0") -> str:
+    """
+    Add a static route to the FortiGate routing table.
+    Parameters:
+    - dst     : destination network in dotted-decimal (e.g. 10.20.0.0)
+    - gateway : next-hop IP address (e.g. 192.168.1.1)
+    - device  : outbound interface name (e.g. wan1, port2)
+    - netmask : subnet mask in dotted-decimal (default 255.255.255.0)
+    Example: add route to 10.20.0.0/24 via 192.168.1.1 on wan1
+    """
+    try:
+        if not dst or not gateway or not device:
+            return "[ERROR] dst, gateway, and device are all required."
+        from modules.routing import create_route
+        r = create_route(dst, gateway, device, netmask)
+        if r.get("status") == "success":
+            return (
+                f"[SUCCESS] Static route added: {dst}/{netmask} "
+                f"via {gateway} on {device}."
+            )
+        return f"[ERROR] {r.get('cli_error', r)}"
+    except Exception as exc:
+        return f"[ERROR] {exc}"
+
+
+@tool
+def tool_delete_route(route_id: int) -> str:
+    """
+    Delete a static route by its numeric ID.
+    Use tool_list_routes first to identify the correct route ID.
+    This action cannot be undone — removing an active route may disrupt connectivity.
+    Parameters:
+    - route_id : numeric ID of the static route to delete
+    """
+    try:
+        if not route_id:
+            return "[ERROR] route_id is required."
+        from modules.routing import delete_route
+        r = delete_route(route_id)
+        if r.get("status") == "success":
+            return f"[SUCCESS] Static route ID {route_id} deleted."
+        return f"[ERROR] {r.get('cli_error', r)}"
+    except Exception as exc:
+        return f"[ERROR] {exc}"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  CUSTOM SERVICE WRITE TOOLS
+# ══════════════════════════════════════════════════════════════════════════════
+
+@tool
+def tool_create_service(name: str, protocol: str = "TCP", port_range: str = "8080") -> str:
+    """
+    Create a custom service object for use in firewall policies.
+    Parameters:
+    - name       : unique name for the service (e.g. MyApp, CustomHTTPS)
+    - protocol   : TCP or UDP (default: TCP)
+    - port_range : single port or range (e.g. 8080, 8000-8080)
+    Example: create service MyApp TCP port 8443
+    """
+    try:
+        if not name:
+            return "[ERROR] Service name is required."
+        protocol = protocol.upper()
+        if protocol not in ("TCP", "UDP", "ICMP", "IP"):
+            return "[ERROR] protocol must be TCP, UDP, ICMP, or IP."
+        from modules.services import create_service
+        r = create_service(name.strip(), protocol, port_range)
+        if r.get("status") == "success":
+            return (
+                f"[SUCCESS] Custom service '{name}' created "
+                f"({protocol}/{port_range})."
+            )
+        cli = r.get("cli_error", "")
+        if r.get("error") in (-651, -5) or "already used" in str(cli).lower():
+            return f"[ERROR] Service '{name}' already exists."
+        return f"[ERROR] {cli or r}"
+    except Exception as exc:
+        return f"[ERROR] {exc}"
+
+
+@tool
+def tool_delete_service(name: str) -> str:
+    """
+    Delete a custom service object by its exact name.
+    Will fail if the service is still referenced by active firewall policies.
+    Use tool_get_service_usage first to check if the service is in use.
+    Parameters:
+    - name : exact name of the service object to delete
+    """
+    try:
+        if not name:
+            return "[ERROR] Service name is required."
+        from modules.services import delete_service
+        r = delete_service(name.strip())
+        if r.get("status") == "success":
+            return f"[SUCCESS] Custom service '{name}' deleted."
+        return f"[ERROR] {r.get('cli_error', r)}"
+    except Exception as exc:
+        return f"[ERROR] {exc}"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  INTERFACE WRITE TOOLS
+# ══════════════════════════════════════════════════════════════════════════════
+
+@tool
+def tool_set_interface_status(name: str, status: str) -> str:
+    """
+    Bring a network interface administratively up or down.
+    WARNING: Bringing down an in-use interface will drop active connections.
+    Always verify traffic is not dependent on this interface before disabling.
+    Parameters:
+    - name   : interface name (e.g. port1, port2, wan1)
+    - status : 'up' to enable, 'down' to disable
+    """
+    try:
+        if not name or not status:
+            return "[ERROR] Both interface name and status are required."
+        status = status.lower()
+        if status not in ("up", "down"):
+            return "[ERROR] status must be 'up' or 'down'."
+        from modules.interfaces import set_interface_status
+        r = set_interface_status(name.strip(), status)
+        if r.get("status") == "success":
+            verb = "enabled" if status == "up" else "disabled"
+            return f"[SUCCESS] Interface '{name}' is now {verb}."
+        return f"[ERROR] {r.get('cli_error', r)}"
+    except Exception as exc:
+        return f"[ERROR] {exc}"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  USER MANAGEMENT WRITE TOOLS
+# ══════════════════════════════════════════════════════════════════════════════
+
+@tool
+def tool_create_user(name: str, password: str, status: str = "enable") -> str:
+    """
+    Create a new local user account on the FortiGate.
+    The user can be added to user groups for policy-based authentication.
+    Parameters:
+    - name     : unique username (no spaces)
+    - password : initial password (minimum 8 characters recommended)
+    - status   : 'enable' (default) or 'disable'
+    """
+    try:
+        if not name or not password:
+            return "[ERROR] Both username and password are required."
+        if len(password) < 6:
+            return "[ERROR] Password must be at least 6 characters."
+        status = status.lower()
+        if status not in ("enable", "disable"):
+            return "[ERROR] status must be 'enable' or 'disable'."
+        from modules.users import create_user
+        r = create_user(name.strip(), password, status)
+        if r.get("status") == "success":
+            return f"[SUCCESS] Local user '{name}' created (status: {status})."
+        cli = r.get("cli_error", "")
+        if r.get("error") in (-651, -5) or "already used" in str(cli).lower():
+            return f"[ERROR] User '{name}' already exists."
+        return f"[ERROR] {cli or r}"
+    except Exception as exc:
+        return f"[ERROR] {exc}"
+
+
+@tool
+def tool_delete_user(name: str) -> str:
+    """
+    Delete a local user account by name.
+    This permanently removes the account and any associated authentication state.
+    Parameters:
+    - name : exact username to delete
+    """
+    try:
+        if not name:
+            return "[ERROR] Username is required."
+        from modules.users import delete_user
+        r = delete_user(name.strip())
+        if r.get("status") == "success":
+            return f"[SUCCESS] Local user '{name}' deleted."
+        return f"[ERROR] {r.get('cli_error', r)}"
+    except Exception as exc:
+        return f"[ERROR] {exc}"
+
+
 #  MASTER TOOL LIST
 
 ALL_TOOLS = [
@@ -853,6 +1168,13 @@ ALL_TOOLS = [
     tool_get_address_usage,
     tool_search_policies,
     tool_get_service_usage,
+    tool_list_services,
+    # Observability — logs
+    tool_get_traffic_logs,
+    tool_get_threat_logs,
+    tool_get_event_logs,
+    # Monitoring — network
+    tool_get_bandwidth_usage,
     # Write — policies
     tool_create_policy,
     tool_update_policy,
@@ -862,8 +1184,18 @@ ALL_TOOLS = [
     # Write — addresses
     tool_create_address,
     tool_delete_address,
+    # Write — routes
+    tool_create_route,
+    tool_delete_route,
+    # Write — services
+    tool_create_service,
+    tool_delete_service,
     # Write — interfaces
     tool_update_interface_access,
+    tool_set_interface_status,
+    # Write — users
+    tool_create_user,
+    tool_delete_user,
     # Write — incident response
     tool_block_ip,
     # Write — maintenance
@@ -876,10 +1208,6 @@ ALL_TOOLS = [
 # Exported for use by agent.py and test suite
 TOOL_MAP = {t.name: t for t in ALL_TOOLS}
 
-
-# Exported constants — used by agent.py, app.py, and test suite
-TOOL_MAP = {t.name: t for t in ALL_TOOLS}
-
 WRITE_TOOLS = {
     "tool_create_policy",
     "tool_update_policy",
@@ -888,7 +1216,14 @@ WRITE_TOOLS = {
     "tool_move_policy",
     "tool_create_address",
     "tool_delete_address",
+    "tool_create_route",
+    "tool_delete_route",
+    "tool_create_service",
+    "tool_delete_service",
     "tool_update_interface_access",
+    "tool_set_interface_status",
+    "tool_create_user",
+    "tool_delete_user",
     "tool_block_ip",
     "tool_backup_config",
-}
+}

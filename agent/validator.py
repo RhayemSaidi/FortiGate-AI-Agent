@@ -1,7 +1,7 @@
 import re
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from modules.interfaces import list_interfaces
 from modules.addresses  import list_addresses
@@ -457,57 +457,81 @@ def validate_create_address(params: dict) -> ValidationResult:
     return result
 
 
-def validate_delete_address(args: dict):
+def validate_delete_address(params: dict) -> ValidationResult:
     """
-    Validates delete_address operation.
-    Blocks deletion if address is still referenced by any policy.
+    Validates a delete_address operation using the standard ValidationResult API.
+    Checks:
+      1. Name is provided.
+      2. Address exists on FortiGate.
+      3. Address is not referenced by any live policy (blocks deletion if so).
     """
-    name = args.get("name", "")
-    
-    # Existence check (existing)
+    result = ValidationResult()
+    name   = params.get("name", "").strip()
+
+    if not name:
+        result.add_error("Address name is required.")
+        return result
+
+    # ── Existence check ──────────────────────────────────
     try:
         from modules.addresses import list_addresses
         r       = list_addresses()
         results = r if isinstance(r, list) else r.get("results", [])
-        names   = [a.get("name", "") for a in results]
+        names   = {a.get("name", "") for a in results}
+
         if name not in names:
-            return ValidationResult(
-                valid=False,
-                messages=[f"Address '{name}' does not exist."],
+            result.add_error(
+                f"Address object '{name}' does not exist on this FortiGate."
             )
-    except Exception:
-        pass
-    
-    # NEW: Usage check — block if still referenced
-    try:
-        from modules.policies import get_address_usage
-        usage = get_address_usage(name)
-        count = usage.get("used_by_count", 0)
-        if count > 0:
-            policy_names = ", ".join(
-                f"{p['name']} (ID:{p['policyid']})"
-                for p in usage.get("used_by", [])[:5]
-            )
-            return ValidationResult(
-                valid=False,
-                messages=[
-                    f"Cannot delete address '{name}' — it is referenced by "
-                    f"{count} policy/policies: {policy_names}. "
-                    f"Remove it from those policies first."
-                ],
-            )
-    except Exception:
-        # Cannot check usage — show a warning but don't block
-        return ValidationResult(
-            valid=True,
-            messages=[],
-            warnings=[
-                f"Could not verify if '{name}' is referenced by policies. "
-                f"Deletion may affect existing policies."
-            ],
+            return result
+
+    except Exception as exc:
+        result.add_warning(
+            f"Could not verify address existence: {exc}. "
+            f"Proceed with caution."
         )
-    
-    return ValidationResult(valid=True, messages=[])
+
+    # ── Policy reference check ───────────────────────────
+    # Scan all policies to see if this address is referenced.
+    # Blocks deletion if referenced — prevents orphaned policy references.
+    try:
+        from modules.policies import list_policies
+        r           = list_policies()
+        pol_results = r if isinstance(r, list) else r.get("results", [])
+        referencing = []
+        name_lower  = name.lower()
+
+        for p in pol_results:
+            for field in ("srcaddr", "dstaddr"):
+                for entry in p.get(field, []):
+                    if entry.get("name", "").lower() == name_lower:
+                        referencing.append(
+                            f"{p.get('name', '?')} (ID:{p.get('policyid', '?')})"
+                        )
+                        break
+
+        if referencing:
+            policy_list = ", ".join(referencing[:5])
+            suffix      = f" (and {len(referencing) - 5} more)" if len(referencing) > 5 else ""
+            result.add_error(
+                f"Cannot delete '{name}' — it is referenced by "
+                f"{len(referencing)} policy/policies: {policy_list}{suffix}. "
+                f"Remove it from those policies first."
+            )
+
+    except Exception as exc:
+        result.add_warning(
+            f"Could not verify whether '{name}' is referenced by policies: {exc}. "
+            f"Deletion may affect existing policies."
+        )
+
+    if result.valid:
+        result.add_warning(
+            f"PERMANENTLY DELETE address object '{name}'. "
+            f"This cannot be undone."
+        )
+
+    return result
 
 
 def validate_update_interface_access(params: dict) -> ValidationResult:

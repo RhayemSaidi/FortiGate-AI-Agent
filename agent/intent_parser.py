@@ -18,16 +18,30 @@ class FieldOp(Enum):
 
 
 # ── Field categories used by executor/verifier ───────────────────────────────
+#
+# LIST_FIELDS: policy fields that hold a list of {name: ...} objects.
+#   item_key — the key inside each list item that holds the value.
+#
+# SCALAR_FIELDS: policy fields that hold a single string value.
+#   values — allowed values (empty list means no restriction enforced here).
+#
+# Both structures are dicts so executor and verifier can do:
+#   LIST_FIELDS[field]["item_key"]
+#   SCALAR_FIELDS[field]["values"]
 
-LIST_FIELDS = {
-    "service",
+LIST_FIELDS: dict = {
+    "service":  {"item_key": "name"},
+    "srcaddr":  {"item_key": "name"},
+    "dstaddr":  {"item_key": "name"},
+    "srcintf":  {"item_key": "name"},
+    "dstintf":  {"item_key": "name"},
 }
 
-SCALAR_FIELDS = {
-    "action",
-    "nat",
-    "status",
-    "logtraffic",
+SCALAR_FIELDS: dict = {
+    "action":      {"values": ["accept", "deny"]},
+    "nat":         {"values": ["enable", "disable"]},
+    "status":      {"values": ["enable", "disable"]},
+    "logtraffic":  {"values": ["all", "utm", "disable"]},
 }
 
 @dataclass

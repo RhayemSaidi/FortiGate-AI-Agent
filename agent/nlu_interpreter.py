@@ -35,51 +35,220 @@ Your ONLY job: interpret user intent and output structured JSON.
 You do NOT execute API calls. You do NOT verify state. You ONLY interpret.
 
 ═══════════════════════════════════════════════════════════
+REQUIRED JSON SCHEMA  (every response MUST follow this exactly)
+═══════════════════════════════════════════════════════════
+{
+  "intent":        "<REQUIRED — one of the intent values listed below>",
+  "confidence":    "high" | "medium" | "low",
+  "policy_id":     <integer or null>,
+  "policy_name":   "<string or null>",
+  "policy_ids":    [<list of integers, only for multi-policy>],
+  "policy_names":  ["<list of strings, only for multi-policy>"],
+  "is_multi_policy": false,
+  "address_name":  "<string or null>",
+  "interface_name":"<string or null>",
+  "neighbor_id":   <integer or null>,
+  "move_action":   "before" | "after" | null,
+  "ip_address":    "<string or null>",
+  "direction":     "inbound" | "outbound" | "both" | null,
+  "deltas":        [],
+  "create_params": {},
+  "ambiguous":     false,
+  "ambiguity_msg": "",
+  "candidates":    [],
+  "missing_fields":[]
+}
+
+═══════════════════════════════════════════════════════════
+VALID INTENT VALUES  (use exactly these strings)
+═══════════════════════════════════════════════════════════
+  update_policy        — modify fields of an existing policy (service, action, nat, status, logtraffic)
+  create_policy        — create a new firewall policy
+  delete_policy        — permanently delete a policy
+  enable_policy        — enable (activate) an existing policy
+  disable_policy       — disable (deactivate) an existing policy
+  move_policy          — reorder a policy (before/after another policy)
+  create_address       — create an address object
+  delete_address       — delete an address object
+  update_interface     — change management access protocols on an interface
+  set_interface_status — enable or disable an interface (up/down)
+  create_route         — create a static route
+  delete_route         — delete a static route
+  create_service       — create a custom service
+  delete_service       — delete a custom service
+  create_user          — create a local user
+  delete_user          — delete a local user
+  block_ip             — block a specific IP address
+  backup_config        — backup the FortiGate configuration
+  ambiguous            — intent cannot be determined; set ambiguous=true and fill ambiguity_msg
+  incomplete           — intent is clear but required fields are missing; fill missing_fields
+
+═══════════════════════════════════════════════════════════
 CRITICAL OUTPUT RULES
 ═══════════════════════════════════════════════════════════
 1. Output ONLY a valid JSON object. No explanation. No markdown. No code blocks.
-2. Use ONLY policy IDs and names from "Available policies". Never invent IDs.
-3. Use ONLY service names from "Available services". Never invent service names.
-4. Use ONLY interface names from "Available interfaces".
-5. If uncertain about any entity: set it to null and list the field in missing_fields.
-6. If intent is ambiguous: set ambiguous=true and describe both options in ambiguity_msg.
+2. The "intent" field is MANDATORY in every response. Never omit it.
+3. Use ONLY policy IDs and names from "Available policies". Never invent IDs.
+4. Use ONLY service names from "Available services". Never invent service names.
+5. Use ONLY interface names from "Available interfaces".
+6. If uncertain about any entity: set it to null and list the field in missing_fields.
+7. If intent is ambiguous: set intent="ambiguous", ambiguous=true, fill ambiguity_msg.
+8. For enable/disable: use intent="enable_policy" or intent="disable_policy".
+   NEVER use "enable_firewall_policy", "disable_firewall_policy", or any other variant.
+
+EXAMPLE — disable a policy by name:
+{"intent":"disable_policy","confidence":"high","policy_id":null,"policy_name":"test1",
+ "policy_ids":[],"policy_names":[],"is_multi_policy":false,"address_name":null,
+ "interface_name":null,"neighbor_id":null,"move_action":null,"ip_address":null,
+ "direction":null,"deltas":[],"create_params":{},"ambiguous":false,
+ "ambiguity_msg":"","candidates":[],"missing_fields":[]}
+
+EXAMPLE — disable a policy by ID:
+{"intent":"disable_policy","confidence":"high","policy_id":4,"policy_name":null,
+ "policy_ids":[],"policy_names":[],"is_multi_policy":false,"address_name":null,
+ "interface_name":null,"neighbor_id":null,"move_action":null,"ip_address":null,
+ "direction":null,"deltas":[],"create_params":{},"ambiguous":false,
+ "ambiguity_msg":"","candidates":[],"missing_fields":[]}
+
+DELTA FORMAT (required for update_policy intent only)
+═══════════════════════════════════════════════════════════
+Each entry in "deltas" must be one of these exact structures:
+
+  List field ops (field = "service", "srcaddr", "dstaddr", "srcintf", "dstintf"):
+    {"field":"service","op":"add",    "values":["SSH","FTP"],"confidence":"high"}
+    {"field":"service","op":"remove", "values":["HTTP"],    "confidence":"high"}
+    {"field":"service","op":"replace","values":["HTTPS"],   "confidence":"high"}
+
+  Scalar field ops (field = "action", "nat", "status", "logtraffic"):
+    {"field":"action",    "op":"set","scalar":"deny",   "confidence":"high"}
+    {"field":"nat",       "op":"set","scalar":"enable", "confidence":"high"}
+    {"field":"status",    "op":"set","scalar":"disable","confidence":"high"}
+    {"field":"logtraffic","op":"set","scalar":"all",    "confidence":"high"}
+
+  Allowed scalar values:
+    action     → "accept" | "deny"
+    nat        → "enable" | "disable"
+    status     → "enable" | "disable"
+    logtraffic → "all" | "utm" | "disable"
+
+EXAMPLE — add SSH to policy 4:
+{"intent":"update_policy","confidence":"high","policy_id":4,"policy_name":null,
+ "policy_ids":[],"policy_names":[],"is_multi_policy":false,"address_name":null,
+ "interface_name":null,"neighbor_id":null,"move_action":null,"ip_address":null,
+ "direction":null,"deltas":[{"field":"service","op":"add","values":["SSH"],"confidence":"high"}],
+ "create_params":{},"ambiguous":false,"ambiguity_msg":"","candidates":[],"missing_fields":[]}
+
+EXAMPLE — set policy 4 action to deny:
+{"intent":"update_policy","confidence":"high","policy_id":4,"policy_name":null,
+ "policy_ids":[],"policy_names":[],"is_multi_policy":false,"address_name":null,
+ "interface_name":null,"neighbor_id":null,"move_action":null,"ip_address":null,
+ "direction":null,"deltas":[{"field":"action","op":"set","scalar":"deny","confidence":"high"}],
+ "create_params":{},"ambiguous":false,"ambiguity_msg":"","candidates":[],"missing_fields":[]}
+
+EXAMPLE — move policy 4 before policy 3:
+{"intent":"move_policy","confidence":"high","policy_id":4,"policy_name":null,
+ "policy_ids":[],"policy_names":[],"is_multi_policy":false,"address_name":null,
+ "interface_name":null,"neighbor_id":3,"move_action":"before","ip_address":null,
+ "direction":null,"deltas":[],"create_params":{},"ambiguous":false,"ambiguity_msg":"","candidates":[],"missing_fields":[]}
+
+CREATE_PARAMS FORMAT
+═══════════════════════════════════════════════════════════
+For these specific intents, you must put the extracted entity properties in "create_params":
+
+  create_policy:    {"name": "...", "srcintf": "...", "dstintf": "...", "action": "...", "service": "..."}
+  create_address:   {"subnet": "192.168.1.0/24"}
+  create_route:     {"destination": "10.0.0.0/24", "gateway": "192.168.1.1", "device": "port1"}
+  create_service:   {"name": "...", "protocol": "TCP|UDP", "port": "8080"}
+  create_user:      {"name": "...", "password": "..."}
+  update_interface: {"allowaccess": "https ssh ping"}
+  set_interface_status: {"status": "up|down"}
+  delete_service:   {"name": "..."}
+  delete_user:      {"name": "..."}
+  delete_route:     {"route_id": "..."}
 """
 
 # ── Result wrapper ────────────────────────────────────────────────────────────
 
 @dataclass
 class NLUResult:
-    success: bool
-    schema: Optional[RawIntentSchema] = None
-    error: str = ""
-    raw_response: str = ""
+    """
+    Wraps the outcome of interpret().
+    Never raises — all failure modes captured here.
+
+    IMPORTANT: 'failed' is a @property, not a dataclass field.
+    Do not attempt to pass it as a constructor argument.
+
+    Check .failed before accessing .schema.
+    error_kind: "parse" | "api" | "schema" | "timeout"
+    """
+    schema:     Optional[RawIntentSchema]
+    success:    bool
+    error_kind: str = ""
+    error_msg:  str = ""
+    raw_output: str = ""
+
+    @property
+    def failed(self) -> bool:
+        """True when NLU interpretation did not produce a usable schema."""
+        return not self.success
 
     @classmethod
-    def ok(
-        cls,
-        schema: RawIntentSchema,
-        raw_response: str = "",
-    ) -> "NLUResult":
+    def ok(cls, schema: "RawIntentSchema") -> "NLUResult":
+        return cls(schema=schema, success=True)
+
+    @classmethod
+    def parse_error(cls, raw: str, cause: Exception) -> "NLUResult":
         return cls(
-            success=True,
-            schema=schema,
-            raw_response=raw_response,
+            schema=None, success=False,
+            error_kind="parse", error_msg=str(cause), raw_output=raw,
         )
 
     @classmethod
-    def parse_error(
-        cls,
-        raw_response: str,
-        exc: Exception,
-    ) -> "NLUResult":
+    def api_error(cls, cause: Exception) -> "NLUResult":
         return cls(
-            success=False,
-            error=str(exc),
-            raw_response=raw_response,
+            schema=None, success=False,
+            error_kind="api", error_msg=str(cause),
         )
 
+    @classmethod
+    def schema_error(cls, raw: str, cause: Exception) -> "NLUResult":
+        return cls(
+            schema=None, success=False,
+            error_kind="schema", error_msg=str(cause), raw_output=raw,
+        )
+
+    @classmethod
+    def timeout_error(cls) -> "NLUResult":
+        return cls(
+            schema=None, success=False,
+            error_kind="timeout", error_msg="Mistral API timed out",
+        )
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+# Intent aliases: Mistral sometimes returns verbose variants not in NLUIntentType.
+# Map them to canonical values BEFORE the enum lookup.
+# Add new aliases here — never change the canonical enum values.
+_INTENT_ALIASES: Dict[str, str] = {
+    "disable_firewall_policy":  "disable_policy",
+    "enable_firewall_policy":   "enable_policy",
+    "create_firewall_policy":   "create_policy",
+    "delete_firewall_policy":   "delete_policy",
+    "update_firewall_policy":   "update_policy",
+    "move_firewall_policy":     "move_policy",
+    "firewall_policy_disable":  "disable_policy",
+    "firewall_policy_enable":   "enable_policy",
+    "policy_disable":           "disable_policy",
+    "policy_enable":            "enable_policy",
+    "block_ip_address":         "block_ip",
+    "ip_block":                 "block_ip",
+    "backup":                   "backup_config",
+    "config_backup":            "backup_config",
+    "interface_status":         "set_interface_status",
+    "enable_interface":         "set_interface_status",
+    "disable_interface":        "set_interface_status",
+}
+
 
 def _safe_int(value):
     try:
@@ -108,16 +277,27 @@ def _build_schema(data: dict, raw_input: str) -> RawIntentSchema:
 
     intent_str = str(data.get("intent", "")).lower().strip()
 
+    logger.debug(f'"event":"nlu_debug_build_schema_start","raw_data":{json.dumps(data)}')
+
     if not intent_str:
         raise NLUSchemaError(data, ["intent"])
+
+    # Normalise Mistral variants before enum lookup.
+    # e.g. "disable_firewall_policy" → "disable_policy"
+    intent_str = _INTENT_ALIASES.get(intent_str, intent_str)
 
     try:
         intent = NLUIntentType(intent_str)
 
     except ValueError:
+        # Secondary partial-match fallback — catches minor prefix/suffix drift.
         for member in NLUIntentType:
             if member.value in intent_str or intent_str in member.value:
                 intent = member
+                logger.debug(
+                    f'"event":"intent_partial_match",'
+                    f'"raw":"{intent_str}","matched":"{member.value}"'
+                )
                 break
         else:
             logger.warning(
@@ -141,7 +321,14 @@ def _build_schema(data: dict, raw_input: str) -> RawIntentSchema:
         if not isinstance(d, dict):
             continue
 
-        raw_value = d.get("value", "")
+        if "value" in d:
+            raw_value = d["value"]
+        elif "values" in d:
+            raw_value = d["values"]
+        elif "scalar" in d:
+            raw_value = d["scalar"]
+        else:
+            raw_value = ""
 
         if (
             d.get("field") == "service"
@@ -169,6 +356,7 @@ def _build_schema(data: dict, raw_input: str) -> RawIntentSchema:
                 confidence=delta_conf.value,
             )
         )
+        logger.debug(f'"event":"nlu_debug_delta_parsed","raw_delta":{json.dumps(d)},"parsed_value":{json.dumps(raw_value)}')
 
     # ── Single-policy ────────────────────────────────────
 
@@ -209,10 +397,32 @@ def _build_schema(data: dict, raw_input: str) -> RawIntentSchema:
 
     raw_missing = list(data.get("missing_fields") or [])
 
-    clean_missing = [
-        f for f in raw_missing
-        if f not in INTERNAL_SCHEMA_FIELDS
-    ]
+    clean_missing = []
+    for f in raw_missing:
+        f_str = str(f).strip()
+        if f_str in INTERNAL_SCHEMA_FIELDS:
+            continue
+        # Mistral sometimes hallucinates sentences in missing_fields
+        if " " in f_str:
+            continue
+        # Never ask for a field if it's already provided!
+        if f_str == "policy_id" and policy_id is not None:
+            continue
+        if f_str == "policy_name" and data.get("policy_name"):
+            continue
+        if f_str == "address_name" and data.get("address_name"):
+            continue
+        if f_str == "interface_name" and data.get("interface_name"):
+            continue
+        if f_str == "neighbor_id" and data.get("neighbor_id") is not None:
+            continue
+        if f_str == "ip_address" and data.get("ip_address"):
+            continue
+        
+        clean_missing.append(f_str)
+
+    if intent == NLUIntentType.MOVE_POLICY:
+        is_multi = False
 
     return RawIntentSchema(
         intent=intent,
@@ -368,6 +578,9 @@ def interpret(
         entity_hint=entity_hint,
     )
 
+    # Pre-initialise so the except handler always has a valid reference.
+    cleaned = ""
+
     try:
         messages = [
             {
@@ -394,25 +607,29 @@ def interpret(
         cleaned = raw_response.strip()
 
         match = re.search(r"\{.*\}", cleaned, re.DOTALL)
-
         if match:
             cleaned = match.group(0)
 
         parsed = json.loads(cleaned)
 
+        logger.debug(f'"event":"nlu_debug_raw_llm_json","parsed":{json.dumps(parsed)}')
+
+        if not isinstance(parsed, dict):
+            raise ValueError(
+                f"Expected JSON object from LLM, got {type(parsed).__name__}"
+            )
+
         schema = _build_schema(parsed, user_input)
 
-        return NLUResult.ok(
-            schema=schema,
-            raw_response=cleaned,
-        )
+        logger.debug(f'"event":"nlu_debug_post_build_schema","schema_deltas":{json.dumps([d.__dict__ for d in schema.deltas])}')
+
+        return NLUResult.ok(schema=schema)
 
     except Exception as exc:
         logger.exception(
             '"event":"nlu_interpret_failed"'
         )
-
         return NLUResult.parse_error(
-            raw_response="",
-            exc=exc,
+            raw=cleaned,
+            cause=exc,
         )

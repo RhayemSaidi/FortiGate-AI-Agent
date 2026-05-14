@@ -164,9 +164,11 @@ def ground(schema: RawIntentSchema) -> GroundedIntentSchema:
     issues: List[GroundingIssue] = []
     intent = schema.intent
 
+    import json
     logger.debug(
         f'"event":"grounding_start","intent":"{intent.value}",'
-        f'"policy_id":{schema.policy_id},"deltas":{len(schema.deltas)}'
+        f'"policy_id":{schema.policy_id},"deltas":{len(schema.deltas)},'
+        f'"pre_grounding_deltas":{json.dumps([d.__dict__ for d in schema.deltas])}'
     )
 
     try:
@@ -238,8 +240,7 @@ def ground(schema: RawIntentSchema) -> GroundedIntentSchema:
 
     logger.debug(
         f'"event":"grounding_complete","is_valid":{result.is_valid},'
-        f'"is_noop":{result.is_noop},"issues":{len(issues)},'
-        f'"grounded_deltas":{len(result.grounded_deltas)}'
+        f'"issues":{len(result.issues)},"post_grounding_deltas":{json.dumps([d.__dict__ for d in result.grounded_deltas])}'
     )
     return result
 
@@ -259,6 +260,18 @@ def ground_multi(schema: RawIntentSchema) -> MultiPolicyGroundingResult:
         shared_deltas=[],
         is_valid=False,
     )
+
+    allowed_intents = (
+        NLUIntentType.UPDATE_POLICY,
+        NLUIntentType.ENABLE_POLICY,
+        NLUIntentType.DISABLE_POLICY
+    )
+    if schema.intent not in allowed_intents:
+        result.issues.append(GroundingIssue(
+            field="intent", kind="unsupported",
+            message=f"Multi-policy execution is not supported for {schema.intent.value}."
+        ))
+        return result
 
     # ── Collect all target policy IDs ─────────────────────
     target_ids:   List[int] = list(schema.policy_ids)
@@ -428,6 +441,13 @@ def _ground_update_deltas(
         v  = delta.value
 
         if f == "action":
+            if not v:
+                issues.append(GroundingIssue(
+                    field="action", kind="missing",
+                    message="Please specify the action.",
+                    hint="Valid values: accept or deny",
+                ))
+                continue
             if str(v).lower() not in _VALID_ACTIONS:
                 issues.append(GroundingIssue(
                     field="action", kind="invalid_value",
@@ -441,6 +461,13 @@ def _ground_update_deltas(
             valid_deltas.append(delta)
 
         elif f == "nat":
+            if not v:
+                issues.append(GroundingIssue(
+                    field="nat", kind="missing",
+                    message="Please specify whether to enable or disable NAT.",
+                    hint="Valid values: enable or disable",
+                ))
+                continue
             if str(v).lower() not in _VALID_NAT:
                 issues.append(GroundingIssue(
                     field="nat", kind="invalid_value",
@@ -454,6 +481,13 @@ def _ground_update_deltas(
             valid_deltas.append(delta)
 
         elif f == "status":
+            if not v:
+                issues.append(GroundingIssue(
+                    field="status", kind="missing",
+                    message="Please specify whether to enable or disable the policy.",
+                    hint="Valid values: enable or disable",
+                ))
+                continue
             if str(v).lower() not in _VALID_STATUS:
                 issues.append(GroundingIssue(
                     field="status", kind="invalid_value",
@@ -467,6 +501,13 @@ def _ground_update_deltas(
             valid_deltas.append(delta)
 
         elif f == "logtraffic":
+            if not v:
+                issues.append(GroundingIssue(
+                    field="logtraffic", kind="missing",
+                    message="Please specify the logtraffic level.",
+                    hint="Valid values: all, utm, disable",
+                ))
+                continue
             if str(v).lower() not in _VALID_LOGTRAFFIC:
                 issues.append(GroundingIssue(
                     field="logtraffic", kind="invalid_value",

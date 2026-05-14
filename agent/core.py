@@ -104,6 +104,31 @@ from validator import (
     validate_update_policy,
 )
 
+# ── Safety guards (Phase 4) ───────────────────────────────────────────────────
+from safety_guards import (
+    validate_create_route,
+    validate_create_service,
+    validate_create_user,
+    validate_delete_route,
+    validate_delete_service,
+    validate_delete_user,
+    validate_set_interface_status,
+)
+
+# ── Snapshot / rollback engine (Phase 2) ─────────────────────────────────────
+from snapshot import (
+    SnapshotStore,
+    capture_policy_snapshot,
+    capture_policy_move_snapshot,
+    capture_route_snapshot,
+    capture_service_snapshot,
+    capture_user_snapshot,
+    execute_rollback,
+)
+
+# ── Deterministic compliance engine (Phase 3) ─────────────────────────────────
+from compliance import run_compliance_check
+
 logger = logging.getLogger("fortigate_agent")
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -113,28 +138,49 @@ logger = logging.getLogger("fortigate_agent")
 MAX_TURNS = 12
 
 _INTENT_TO_TOOL: Dict[NLUIntentType, str] = {
-    NLUIntentType.UPDATE_POLICY:    "tool_update_policy",
-    NLUIntentType.CREATE_POLICY:    "tool_create_policy",
-    NLUIntentType.DELETE_POLICY:    "tool_delete_policy",
-    NLUIntentType.ENABLE_POLICY:    "tool_enable_disable_policy",
-    NLUIntentType.DISABLE_POLICY:   "tool_enable_disable_policy",
-    NLUIntentType.MOVE_POLICY:      "tool_move_policy",
-    NLUIntentType.CREATE_ADDRESS:   "tool_create_address",
-    NLUIntentType.DELETE_ADDRESS:   "tool_delete_address",
-    NLUIntentType.UPDATE_INTERFACE: "tool_update_interface_access",
-    NLUIntentType.BLOCK_IP:         "tool_block_ip",
-    NLUIntentType.BACKUP_CONFIG:    "tool_backup_config",
+    NLUIntentType.UPDATE_POLICY:        "tool_update_policy",
+    NLUIntentType.CREATE_POLICY:        "tool_create_policy",
+    NLUIntentType.DELETE_POLICY:        "tool_delete_policy",
+    NLUIntentType.ENABLE_POLICY:        "tool_enable_disable_policy",
+    NLUIntentType.DISABLE_POLICY:       "tool_enable_disable_policy",
+    NLUIntentType.MOVE_POLICY:          "tool_move_policy",
+    NLUIntentType.CREATE_ADDRESS:       "tool_create_address",
+    NLUIntentType.DELETE_ADDRESS:       "tool_delete_address",
+    NLUIntentType.UPDATE_INTERFACE:     "tool_update_interface_access",
+    NLUIntentType.SET_INTERFACE_STATUS: "tool_set_interface_status",
+    NLUIntentType.CREATE_ROUTE:         "tool_create_route",
+    NLUIntentType.DELETE_ROUTE:         "tool_delete_route",
+    NLUIntentType.CREATE_SERVICE:       "tool_create_service",
+    NLUIntentType.DELETE_SERVICE:       "tool_delete_service",
+    NLUIntentType.CREATE_USER:          "tool_create_user",
+    NLUIntentType.DELETE_USER:          "tool_delete_user",
+    NLUIntentType.BLOCK_IP:             "tool_block_ip",
+    NLUIntentType.BACKUP_CONFIG:        "tool_backup_config",
 }
 
 VALIDATORS: Dict[str, Any] = {
+    # Policy operations
     "tool_create_policy":           validate_create_policy,
     "tool_delete_policy":           validate_delete_policy,
     "tool_update_policy":           validate_update_policy,
     "tool_enable_disable_policy":   validate_enable_disable_policy,
     "tool_move_policy":             validate_move_policy,
+    # Address operations
     "tool_create_address":          validate_create_address,
     "tool_delete_address":          validate_delete_address,
+    # Interface operations
     "tool_update_interface_access": validate_update_interface_access,
+    "tool_set_interface_status":    validate_set_interface_status,
+    # Route operations
+    "tool_create_route":            validate_create_route,
+    "tool_delete_route":            validate_delete_route,
+    # Service operations
+    "tool_create_service":          validate_create_service,
+    "tool_delete_service":          validate_delete_service,
+    # User operations
+    "tool_create_user":             validate_create_user,
+    "tool_delete_user":             validate_delete_user,
+    # Incident response
     "tool_block_ip":                validate_block_ip,
 }
 
@@ -181,13 +227,15 @@ _MISSING_HINTS: Dict[str, str] = {
 _CAPABILITY_RESPONSE = """I manage FortiGate firewalls using natural language. Here is what I can do:
 
 READ — executed immediately, no confirmation:
-  list all policies / interfaces / addresses / routes / users
+  list all policies / interfaces / addresses / routes / users / services
   show details of policy 4 (or by name: show details of policy BlockSSH)
   what does policy BlockSSH do?
   show enabled policies / show deny policies
   is NAT enabled in policy test1?
   what are the services of policy 4?
   check cpu and memory / show vpn status / show active sessions / system status
+  show bandwidth usage per interface
+  show recent traffic logs / show threat logs / show event logs
 
 WRITE — always require your confirmation:
   add FTP to policy 4
@@ -195,12 +243,19 @@ WRITE — always require your confirmation:
   set policy 4 action to deny
   enable NAT in policy 4
   disable HTTP and TELNET on port2
+  bring port2 down / bring port2 up
   create policy BlockHTTP from port1 to port2 denying HTTP
   delete policy 4
   move policy 4 before policy 3
   enable policy 4 / disable policy BlockSSH
   create address WebServer 192.168.10.50/32
   block ip 192.168.1.99
+  add static route to 10.20.0.0 via 192.168.1.1 on wan1
+  delete route 5
+  create service MyApp TCP port 8443
+  delete service MyApp
+  create user alice password P@ss1234
+  delete user alice
   backup the configuration
 
 SECURITY ANALYSIS:
@@ -601,16 +656,22 @@ def _format_security_analysis(
 
 
 def _verify(tool_name: str, tool_args: dict, result: ToolResult) -> str:
-    """Post-execution state verification for write operations."""
+    """
+    Post-execution state verification for ALL write operations.
+
+    Trust-boundary rule: this function ONLY reads FortiGate state.
+    It never calls the LLM. It returns a deterministic verification string.
+
+    Returns empty string for non-write tools or if verification is not applicable.
+    """
     if not result.is_success:
         return ""
 
     try:
+        # ── Policy operations ─────────────────────────────────────────────────
         from modules.policies import get_policy as _gp, list_policies as _lp
 
-        if tool_name in (
-            "tool_delete_policy", "tool_move_policy", "tool_create_policy"
-        ):
+        if tool_name in ("tool_delete_policy", "tool_move_policy", "tool_create_policy"):
             r       = _lp()
             results = r if isinstance(r, list) else r.get("results", [])
             if not results:
@@ -788,6 +849,67 @@ def _grounded_to_tool_args(grounded: GroundedIntentSchema) -> Optional[dict]:
                 return None
             return {"name": interface_name, "allowaccess": allowaccess}
 
+        if intent == NLUIntentType.SET_INTERFACE_STATUS:
+            if not raw.interface_name:
+                return None
+            cp = raw.create_params or {}
+            status = cp.get("status")
+            if not status:
+                # Fallback to checking deltas
+                for d in raw.deltas:
+                    if d.field == "status":
+                        status = str(d.value).lower()
+            if not status:
+                status = "up" if "up" in raw.raw_input.lower() or "enable" in raw.raw_input.lower() else "down"
+            return {"name": raw.interface_name, "status": status}
+
+        if intent == NLUIntentType.CREATE_ROUTE:
+            cp = raw.create_params or {}
+            dest = cp.get("destination")
+            gw = cp.get("gateway")
+            dev = cp.get("device")
+            if not all([dest, gw, dev]):
+                return None
+            return {"destination": dest, "gateway": gw, "device": dev}
+
+        if intent == NLUIntentType.DELETE_ROUTE:
+            cp = raw.create_params or {}
+            rid = cp.get("route_id")
+            if not rid:
+                return None
+            return {"route_id": str(rid)}
+
+        if intent == NLUIntentType.CREATE_SERVICE:
+            cp = raw.create_params or {}
+            name = cp.get("name")
+            proto = cp.get("protocol")
+            port = cp.get("port")
+            if not all([name, proto, port]):
+                return None
+            return {"name": name, "protocol": proto, "port": str(port)}
+
+        if intent == NLUIntentType.DELETE_SERVICE:
+            cp = raw.create_params or {}
+            name = cp.get("name")
+            if not name:
+                return None
+            return {"name": name}
+
+        if intent == NLUIntentType.CREATE_USER:
+            cp = raw.create_params or {}
+            name = cp.get("name")
+            pw = cp.get("password")
+            if not all([name, pw]):
+                return None
+            return {"name": name, "password": pw}
+
+        if intent == NLUIntentType.DELETE_USER:
+            cp = raw.create_params or {}
+            name = cp.get("name")
+            if not name:
+                return None
+            return {"name": name}
+
         if intent == NLUIntentType.BLOCK_IP:
             # Always read from computed — not from current_state
             ip  = grounded.computed.get("grounded_ip") or raw.ip_address
@@ -835,6 +957,7 @@ class AgentSession:
         self.conversation: list        = [SystemMessage(content=SYSTEM_PROMPT)]
         self._pending: Optional[ConfirmationState] = None
         self.ctx:      SessionContext              = SessionContext()
+        self.snapshots: SnapshotStore              = SnapshotStore()
 
     @property
     def has_pending(self) -> bool:
@@ -912,6 +1035,15 @@ class AgentSession:
         )
 
         cat = route_result.category
+
+        # Intercept rollback everywhere
+        lower = user_input.lower().strip()
+        if any(k in lower for k in ("rollback", "undo last", "revert last")):
+            return self._handle_rollback(user_input)
+        if any(k in lower for k in ("rollback history", "snapshot history", "show rollback")):
+            return AgentResponse(
+                text=self.snapshots.format_list(), kind=ResponseKind.ANSWER
+            )
 
         if cat == RouteCategory.CONVERSATIONAL:
             return self._handle_conversational(user_input)
@@ -1063,35 +1195,49 @@ class AgentSession:
 
     def _handle_security_analysis(self, user_input: str) -> AgentResponse:
         """
-        Handle security audit requests.
-        Updates session context so follow-ups inherit the security topic.
+        Handle security audit and compliance requests.
+
+        Routes:
+          - 'audit my firewall' / 'analyze security' → full compliance check
+          - 'check policies' / 'risky policies'       → policy-scope check
+          - 'check interfaces'                        → interface-scope check
+          - 'check routes'                            → route-scope check
+          - 'check users'                             → user-scope check
+
+        All findings are from the deterministic compliance engine — no LLM hallucination.
         """
         logger.debug(
-            f'"event":"security_analysis_start","input":"{user_input[:80]}"'
+            f'"event":"compliance_check_start","input":"{user_input[:80]}"'
         )
 
-        result = _run_tool("tool_analyze_security", {}, user_input)
+        lower = user_input.lower()
+        if "interface" in lower or "intf" in lower:
+            scope = "interfaces"
+        elif any(k in lower for k in ("route", "routing")):
+            scope = "routes"
+        elif any(k in lower for k in ("user", "account")):
+            scope = "users"
+        elif any(k in lower for k in ("polic", "rule")):
+            scope = "policies"
+        else:
+            scope = "full"
 
-        if result.is_error:
-            logger.error(
-                f'"event":"security_analysis_fail","error":"{result.message}"'
-            )
-            return AgentResponse(
-                text=(
-                    "Security analysis could not complete.\n"
-                    "Please check the FortiGate connection and try again."
-                ),
-                kind=ResponseKind.ERROR,
+        try:
+            report = run_compliance_check(scope=scope)
+            answer = report.format()
+        except Exception as exc:
+            logger.error(f'"event":"compliance_check_fail","error":"{exc}"')
+            answer = (
+                "Compliance check could not complete.\n"
+                f"Error: {exc}\n"
+                "Please verify FortiGate connectivity."
             )
 
-        answer = _format_security_analysis(
-            self.llm_plain, self.conversation, result.for_llm(), user_input
-        )
         self.ctx.set_security_analysis(summary=answer[:500])
         self._record(user_input, answer)
         return AgentResponse(
             text=answer,
-            tool_called="tool_analyze_security",
+            tool_called="compliance_engine",
             kind=ResponseKind.ANSWER,
         )
 
@@ -1125,16 +1271,43 @@ class AgentSession:
             logger.warning(f'"event":"context_fetch_fail_nlu","error":"{exc}"')
             context = None
 
-        # NEW: inject entity memory hint for pronoun resolution
-        entity_hint = self.ctx.get_active_entities_hint()
+        # NEW: inject entity memory hint only if a pronoun/anaphora is present
+        # This prevents over-aggressive fallback for random input.
+        import re
+        has_pronoun = bool(re.search(r'\b(it|this|that|them|him|her|il|elle|ce|cette)\b', user_input.lower()))
+        entity_hint = self.ctx.get_active_entities_hint() if has_pronoun else ""
 
-        nlu_result: NLUResult = interpret(
-            user_input=user_input,
-            llm_plain=self.llm_plain,
-            context=context,
-            conversation_history=self._get_recent_history(),
-            entity_hint=entity_hint,   # NEW
-        )
+        try:
+            nlu_result: NLUResult = interpret(
+                user_input=user_input,
+                llm_plain=self.llm_plain,
+                context=context,
+                conversation_history=self._get_recent_history(),
+                entity_hint=entity_hint,   # NEW
+            )
+        except Exception as exc:
+            logger.error(
+                f'"event":"interpret_unhandled_raise",'
+                f'"error":"{exc}"',
+                exc_info=True,
+            )
+            return AgentResponse(
+                text="An internal error occurred while interpreting your request. "
+                     "Please try again.",
+                kind=ResponseKind.ERROR,
+            )
+
+        # Safety guard: interpret() contract requires an NLUResult instance.
+        if not isinstance(nlu_result, NLUResult):
+            logger.error(
+                f'"event":"nlu_result_type_error",'
+                f'"type":"{type(nlu_result).__name__}"'
+            )
+            return AgentResponse(
+                text="An internal error occurred (unexpected NLU result type). "
+                     "Please try again.",
+                kind=ResponseKind.ERROR,
+            )
 
         if nlu_result.failed:
             return self._handle_nlu_failure(nlu_result)
@@ -1237,7 +1410,7 @@ class AgentSession:
         if not batch_grounded.is_valid:
             # Total failure — no valid targets at all
             error_lines = [f"  {i.message}" for i in batch_grounded.issues
-                        if i.kind in ("not_found", "invalid_value", "missing", "api_unavailable")]
+                        if i.kind in ("not_found", "invalid_value", "missing", "api_unavailable", "unsupported")]
             return AgentResponse(
                 text="I could not validate that request:\n" + "\n".join(error_lines or ["  Unknown validation failure."]),
                 kind=ResponseKind.ANSWER,
@@ -1251,19 +1424,29 @@ class AgentSession:
 
         batch_intents = []
         for grounded in batch_grounded.grounded_intents:
-            if not grounded.grounded_deltas or not grounded.policy_id:
+            if not grounded.policy_id:
                 continue
+            
             exec_deltas = []
-            for d in grounded.grounded_deltas:
-                op = _OP_MAP.get(str(d.op).lower())
-                if op is None:
+            
+            if schema.intent == NLUIntentType.ENABLE_POLICY:
+                exec_deltas.append(FieldDelta(field_name="status", op=FieldOp.SET, values=[], scalar="enable"))
+            elif schema.intent == NLUIntentType.DISABLE_POLICY:
+                exec_deltas.append(FieldDelta(field_name="status", op=FieldOp.SET, values=[], scalar="disable"))
+            else:
+                if not grounded.grounded_deltas:
                     continue
-                exec_deltas.append(FieldDelta(
-                    field_name=str(d.field),
-                    op=op,
-                    values=d.value if isinstance(d.value, list) else [],
-                    scalar=d.value if isinstance(d.value, str) else "",
-                ))
+                for d in grounded.grounded_deltas:
+                    op = _OP_MAP.get(str(d.op).lower())
+                    if op is None:
+                        continue
+                    exec_deltas.append(FieldDelta(
+                        field_name=str(d.field),
+                        op=op,
+                        values=d.value if isinstance(d.value, list) else [],
+                        scalar=d.value if isinstance(d.value, str) else "",
+                    ))
+            
             if exec_deltas:
                 batch_intents.append(UpdateIntent(
                     policy_id=grounded.policy_id,
@@ -1686,11 +1869,21 @@ class AgentSession:
                         text=v.format(), kind=ResponseKind.WARNING, pending=True,
                     )
 
+        # ── Snapshot capture before write ──────────────────────────────────────
+        # Capture pre-operation state for rollback support.
+        # This is deliberately placed AFTER validation to avoid capturing state
+        # for operations that will be blocked.
+        self._capture_pre_snapshot(pc)
+
         result       = _run_tool(pc.tool_name, pc.tool_args, pc.original_input)
         verification = _verify(pc.tool_name, pc.tool_args, result)
         answer       = _format_tool_result(
             self.llm_plain, self.conversation, result, pc.original_input
         )
+
+        # Trust-boundary rule: verification string takes precedence over LLM response
+        # for communicating whether the write was applied. The LLM formats prose;
+        # the verifier supplies the ground truth.
         full_text = answer + ("\n" + verification if verification else "")
         self.ctx.record_write(pc.tool_name, str(pc.tool_args.get("policy_id", "")))
         self._record(pc.original_input, answer)
@@ -1698,6 +1891,118 @@ class AgentSession:
         return AgentResponse(
             text=full_text, tool_called=pc.tool_name, kind=ResponseKind.ANSWER
         )
+
+    # ── Snapshot helpers ───────────────────────────────────────────────────────
+
+    def _capture_pre_snapshot(self, pc: "ConfirmationState") -> None:
+        """
+        Capture pre-operation state into the snapshot store before a write.
+
+        Only captures for tools that have a deterministic rollback procedure.
+        Silently skips for tools without one (backup, block_ip, etc.).
+        """
+        tool = pc.tool_name
+        args = pc.tool_args
+        desc = pc.original_input[:80]
+
+        try:
+            if tool in ("tool_delete_policy", "tool_enable_disable_policy"):
+                pid = args.get("policy_id")
+                if pid:
+                    capture_policy_snapshot(self.snapshots, int(pid), desc)
+
+            elif tool == "tool_move_policy":
+                pid = args.get("policy_id")
+                if pid:
+                    capture_policy_move_snapshot(self.snapshots, int(pid), desc)
+
+            elif tool in ("tool_delete_route", "tool_create_route"):
+                route_id = args.get("route_id")
+                if route_id:
+                    capture_route_snapshot(
+                        self.snapshots, int(route_id), desc, tool_name=tool
+                    )
+
+            elif tool in ("tool_delete_service", "tool_create_service"):
+                name = args.get("name", "")
+                if name:
+                    capture_service_snapshot(
+                        self.snapshots, name, desc, tool_name=tool
+                    )
+
+            elif tool in ("tool_delete_user", "tool_create_user"):
+                name = args.get("name", "")
+                if name:
+                    capture_user_snapshot(
+                        self.snapshots, name, desc, tool_name=tool
+                    )
+
+        except Exception as exc:
+            logger.warning(
+                f'"event":"snapshot_capture_error","tool":"{tool}","error":"{exc}"'
+            )
+
+    # ── Rollback handler ───────────────────────────────────────────────────────
+
+    def _handle_rollback(self, user_input: str) -> AgentResponse:
+        """
+        Process a rollback request.
+
+        Supports:
+            'rollback last'           → rolls back the most recent operation
+            'rollback <OP_ID>'        → rolls back a specific operation by ID
+            'show rollback history'   → lists available snapshots
+        """
+        lower = user_input.lower().strip()
+
+        # List request
+        if any(k in lower for k in ("history", "list", "show rollback", "available")):
+            return AgentResponse(
+                text=self.snapshots.format_list(), kind=ResponseKind.ANSWER
+            )
+
+        # Extract specific op_id if provided
+        import re as _re
+        op_id_match = _re.search(r'\b([0-9A-Fa-f]{8})\b', user_input)
+        op_id = op_id_match.group(1).upper() if op_id_match else None
+
+        logger.info(
+            f'"event":"rollback_requested",'
+            f'"op_id":"{op_id or "last"}",'
+            f'"input":"{user_input[:80]}"'
+        )
+
+        result = execute_rollback(self.snapshots, op_id=op_id)
+
+        if result.success:
+            text = (
+                f"Rollback completed successfully.\n"
+                f"  Operation: [{result.op_id}]\n"
+                f"  {result.message}\n"
+                + (f"  {result.detail}" if result.detail else "")
+            )
+            log_action(
+                "ROLLBACK", user_input, "rollback",
+                f"op_id={result.op_id}", result.message, "success"
+            )
+        else:
+            text = (
+                f"Rollback failed.\n"
+                f"  {result.message}\n"
+                f"Use 'show rollback history' to see available rollback points."
+            )
+            log_action(
+                "ROLLBACK", user_input, "rollback",
+                f"op_id={result.op_id or 'last'}", result.message, "error"
+            )
+
+        self._record(user_input, text)
+        return AgentResponse(
+            text=text,
+            kind=ResponseKind.ANSWER if result.success else ResponseKind.ERROR,
+        )
+
+
 
     def _format_batch_results(
         self,
@@ -1768,6 +2073,7 @@ class AgentSession:
         results: List[BatchUpdateResult] = []
 
         for intent in batch.intents:
+            capture_policy_snapshot(self.snapshots, intent.policy_id, pc.original_input[:80])
             exec_result = executor.execute(intent)
 
             log_action(
@@ -1867,6 +2173,8 @@ class AgentSession:
             get_policy_fn=get_policy,
             update_policy_fn=_up_raw,
         )
+
+        capture_policy_snapshot(self.snapshots, intent_obj.policy_id, pc.original_input[:80])
 
         exec_result = executor.execute(intent_obj)
 

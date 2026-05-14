@@ -12,10 +12,13 @@ Contract:
 Never trusts API success response alone.
 Never sends partial updates.
 """
+import logging
 from dataclasses import dataclass, field as dc_field
 from typing import Optional, List, Dict, Any
 
 from intent_parser import UpdateIntent, FieldDelta, FieldOp, LIST_FIELDS, SCALAR_FIELDS
+
+logger = logging.getLogger("fortigate_agent")
 
 
 @dataclass
@@ -108,8 +111,11 @@ class PolicyUpdateExecutor:
                 return raw[0]
             if isinstance(raw, dict) and raw:
                 return raw
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.error(
+                f'"event":"executor_fetch_fail",'
+                f'"policy_id":{policy_id},"error":"{exc}"'
+            )
         return None
 
     def _check_noops(self, current: dict, deltas: List[FieldDelta]) -> List[str]:

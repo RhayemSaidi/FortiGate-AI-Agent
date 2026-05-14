@@ -7,7 +7,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 logger = logging.getLogger("fortigate_agent")
 
@@ -182,8 +182,8 @@ class SessionContext:
     pending_incomplete:           Optional[PendingIncompleteIntent] = None
 
     # Ownership registry (this session only)
-    session_created_addresses: set = field(default_factory=set)
-    session_created_policies:  set = field(default_factory=set)
+    session_created_addresses: Set[str] = field(default_factory=set)
+    session_created_policies:  Set[str] = field(default_factory=set)
 
     # Turn counter
     turn_count: int = 0
