@@ -490,3 +490,23 @@ def validate_delete_user(params: dict) -> ValidationResult:
         f"This cannot be undone. Any active sessions for this user will be terminated."
     )
     return result
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  System Control safety guards
+# ══════════════════════════════════════════════════════════════════════════════
+
+def validate_reboot_system(params: dict) -> ValidationResult:
+    """
+    Guard: rebooting the firewall.
+    
+    WARNS heavily because this drops all traffic, severs the API connection,
+    and takes several minutes to recover.
+    """
+    result = ValidationResult()
+    result.add_warning(
+        "CRITICAL SYSTEM OPERATION: You are about to REBOOT the firewall. "
+        "This will immediately drop ALL network traffic and disconnect all active VPNs and sessions. "
+        "The agent will temporarily lose connection during the reboot cycle (typically 2-5 minutes)."
+    )
+    return result

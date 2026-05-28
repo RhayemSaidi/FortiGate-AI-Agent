@@ -13,6 +13,19 @@ def _compute_hash(entry: dict) -> str:
     entry_str = json.dumps(entry, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(entry_str.encode("utf-8")).hexdigest()
 
+def _get_last_hash() -> str:
+    if not os.path.exists(AUDIT_FILE):
+        return "GENESIS"
+    try:
+        with open(AUDIT_FILE, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+            for line in reversed(lines):
+                if line.strip():
+                    return json.loads(line).get("hash", "GENESIS")
+    except Exception:
+        pass
+    return "GENESIS"
+
 
 def log_action(action: str, user_input: str, tool_called: str,
                tool_input: str, result: str,
@@ -33,6 +46,7 @@ def log_action(action: str, user_input: str, tool_called: str,
         "result":      result,
         "status":      status,
         "extra":       extra or {},
+        "prev_hash":   _get_last_hash(),
     }
     entry["hash"] = _compute_hash({k: v for k, v in entry.items() if k != "hash"})
     with open(AUDIT_FILE, "a", encoding="utf-8") as f:
@@ -48,6 +62,7 @@ def log_conversation(user_input: str, agent_response: str):
         "timestamp":      ts,
         "user_input":     user_input,
         "agent_response": agent_response,
+        "prev_hash":      _get_last_hash(),
     }
     entry["hash"] = _compute_hash({k: v for k, v in entry.items() if k != "hash"})
     with open(AUDIT_FILE, "a", encoding="utf-8") as f:
@@ -82,6 +97,7 @@ def verify_integrity() -> dict:
     total = 0
     valid = 0
     corrupted = []
+    expected_prev_hash = "GENESIS"
 
     with open(AUDIT_FILE, "r", encoding="utf-8") as f:
         lines = f.readlines()
@@ -94,15 +110,23 @@ def verify_integrity() -> dict:
             entry = json.loads(line)
             total += 1
             stored_hash = entry.pop("hash", None)
+            stored_prev_hash = entry.get("prev_hash")
             expected    = _compute_hash(entry)
-            if stored_hash == expected:
+            
+            # For the very first entry, we might not have a strict GENESIS match if they were created before this update, 
+            # but going forward it should match.
+            chain_valid = (stored_prev_hash == expected_prev_hash) or (expected_prev_hash == "GENESIS")
+            
+            if stored_hash == expected and chain_valid:
                 valid += 1
+                expected_prev_hash = stored_hash
             else:
                 corrupted.append({
                     "line":        i + 1,
                     "timestamp":   entry.get("timestamp"),
                     "stored_hash": stored_hash,
                     "expected":    expected,
+                    "chain_broken": not chain_valid
                 })
         except json.JSONDecodeError:
             corrupted.append({"line": i + 1, "error": "Invalid JSON"})

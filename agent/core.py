@@ -113,6 +113,7 @@ from safety_guards import (
     validate_delete_service,
     validate_delete_user,
     validate_set_interface_status,
+    validate_reboot_system,
 )
 
 # ── Snapshot / rollback engine (Phase 2) ─────────────────────────────────────
@@ -156,6 +157,7 @@ _INTENT_TO_TOOL: Dict[NLUIntentType, str] = {
     NLUIntentType.DELETE_USER:          "tool_delete_user",
     NLUIntentType.BLOCK_IP:             "tool_block_ip",
     NLUIntentType.BACKUP_CONFIG:        "tool_backup_config",
+    NLUIntentType.REBOOT_SYSTEM:        "tool_reboot_system",
 }
 
 VALIDATORS: Dict[str, Any] = {
@@ -182,6 +184,8 @@ VALIDATORS: Dict[str, Any] = {
     "tool_delete_user":             validate_delete_user,
     # Incident response
     "tool_block_ip":                validate_block_ip,
+    # System operations
+    "tool_reboot_system":           validate_reboot_system,
 }
 
 _MISSING_HINTS: Dict[str, str] = {
@@ -224,53 +228,24 @@ _MISSING_HINTS: Dict[str, str] = {
     ),
 }
 
-_CAPABILITY_RESPONSE = """I manage FortiGate firewalls using natural language. Here is what I can do:
+_CAPABILITY_RESPONSE = """I am a FortiGate Security Orchestration Agent. Here is what I can do:
 
-READ — executed immediately, no confirmation:
-  list all policies / interfaces / addresses / routes / users / services
-  show details of policy 4 (or by name: show details of policy BlockSSH)
-  what does policy BlockSSH do?
-  show enabled policies / show deny policies
-  is NAT enabled in policy test1?
-  what are the services of policy 4?
-  check cpu and memory / show vpn status / show active sessions / system status
-  show bandwidth usage per interface
-  show recent traffic logs / show threat logs / show event logs
+**Read Operations (Immediate)**
+- Query firewall policies, interfaces, and active routing.
+- Monitor system health, active sessions, and VPN status.
+- Retrieve and analyze real-time traffic and threat logs.
 
-WRITE — always require your confirmation:
-  add FTP to policy 4
-  remove SSH from policy BlockSSH
-  set policy 4 action to deny
-  enable NAT in policy 4
-  disable HTTP and TELNET on port2
-  bring port2 down / bring port2 up
-  create policy BlockHTTP from port1 to port2 denying HTTP
-  delete policy 4
-  move policy 4 before policy 3
-  enable policy 4 / disable policy BlockSSH
-  create address WebServer 192.168.10.50/32
-  block ip 192.168.1.99
-  add static route to 10.20.0.0 via 192.168.1.1 on wan1
-  delete route 5
-  create service MyApp TCP port 8443
-  delete service MyApp
-  create user alice password P@ss1234
-  delete user alice
-  backup the configuration
+**Write Operations (Confirmation Required)**
+- Create, modify, and delete firewall policies.
+- Manage NAT configurations, services, and address objects.
+- Modify static routing and network interface states.
+- Execute point-in-time configuration rollbacks.
 
-SECURITY ANALYSIS:
-  analyze my firewall security
-  check for risky policies
-  audit my firewall
-  find insecure configurations
+**Analysis & Support**
+- Perform proactive security audits on existing configurations.
+- Answer technical queries using official Fortinet documentation.
 
-KNOWLEDGE:
-  what does error -651 mean?
-  how do I configure a VLAN on FortiGate?
-  what is the best practice for firewall policies?
-  how does NAT work in FortiOS?
-
-I work in English and French."""
+*Supported natively in both English and French.*"""
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -359,6 +334,7 @@ def _build_llms() -> Tuple[Any, Any]:
         model="mistral-small-latest",
         temperature=0,
         api_key=MISTRAL_API_KEY,
+        timeout=30,
     )
     return base.bind_tools(ALL_TOOLS), base
 
@@ -416,62 +392,66 @@ def resolve_policy_id(name_or_id: str) -> Optional[int]:
 
 
 def build_confirmation_text(tool_name: str, args: dict) -> str:
-    sep   = "=" * 55
-    lines = [sep, "  CONFIRMATION REQUIRED", sep]
+    lines = ["\n  CONFIRMATION REQUIRED", "  " + "─" * 40]
 
     if tool_name == "tool_create_policy":
         lines += [
-            "  CREATE firewall policy:",
-            f"    Name      : {args.get('name', '?')}",
-            f"    Interfaces: {args.get('srcintf', '?')} → {args.get('dstintf', '?')}",
-            f"    Src Addr  : {args.get('srcaddr', 'all')}",
-            f"    Dst Addr  : {args.get('dstaddr', 'all')}",
-            f"    Service   : {args.get('service', 'ALL')}",
-            f"    Action    : {str(args.get('action', 'accept')).upper()}",
+            "  Create firewall policy",
+            f"    Name       {args.get('name', '?')}",
+            f"    Interfaces {args.get('srcintf', '?')} → {args.get('dstintf', '?')}",
+            f"    Source     {args.get('srcaddr', 'all')}",
+            f"    Destination {args.get('dstaddr', 'all')}",
+            f"    Service    {args.get('service', 'ALL')}",
+            f"    Action     {str(args.get('action', 'accept')).upper()}",
         ]
     elif tool_name == "tool_enable_disable_policy":
-        verb = "ENABLE" if args.get("status") == "enable" else "DISABLE"
-        lines.append(f"  {verb} policy ID {args.get('policy_id', '?')}")
+        verb = "Enable" if args.get("status") == "enable" else "Disable"
+        lines.append(f"  {verb} policy  ID {args.get('policy_id', '?')}")
     elif tool_name == "tool_delete_policy":
         lines += [
-            f"  PERMANENTLY DELETE policy ID {args.get('policy_id', '?')}",
-            "  This cannot be undone.",
+            f"  Permanently delete policy  ID {args.get('policy_id', '?')}",
+            "  ⚠  This cannot be undone.",
         ]
     elif tool_name == "tool_move_policy":
         lines.append(
-            f"  REORDER: move policy {args.get('policy_id', '?')} "
+            f"  Reorder  move policy {args.get('policy_id', '?')} "
             f"{args.get('move_action', '?')} "
             f"policy {args.get('neighbor_id', '?')}"
         )
     elif tool_name == "tool_create_address":
         lines += [
-            "  CREATE address object:",
-            f"    Name   : {args.get('name', '?')}",
-            f"    Subnet : {args.get('subnet', '?')}",
+            "  Create address object",
+            f"    Name    {args.get('name', '?')}",
+            f"    Subnet  {args.get('subnet', '?')}",
         ]
     elif tool_name == "tool_delete_address":
-        lines.append(
-            f"  DELETE address '{args.get('name', '?')}' — cannot be undone."
-        )
+        lines += [
+            f"  Delete address  '{args.get('name', '?')}'",
+            "  ⚠  This cannot be undone.",
+        ]
     elif tool_name == "tool_update_interface_access":
         lines += [
-            f"  UPDATE interface {args.get('name', '?')}:",
-            f"    Allow only: {str(args.get('allowaccess', '?')).upper()}",
-            "  All other protocols will be DISABLED.",
+            f"  Update interface  {args.get('name', '?')}",
+            f"    Allow only  {str(args.get('allowaccess', '?')).upper()}",
+            "  ⚠  All other protocols will be disabled.",
         ]
     elif tool_name == "tool_block_ip":
         lines += [
-            f"  BLOCK IP {args.get('ip_address', '?')} "
-            f"({args.get('direction', 'both')})",
+            f"  Block IP  {args.get('ip_address', '?')}  ({args.get('direction', 'both')})",
             "  Creates deny policies — reversible by deleting them.",
         ]
     elif tool_name == "tool_backup_config":
-        lines.append("  BACKUP configuration to local file.")
+        lines.append("  Back up configuration to local file.")
+    elif tool_name == "tool_reboot_system":
+        lines += [
+            "  ⚠  Reboot system.",
+            "  This will disrupt network connectivity temporarily.",
+        ]
     else:
-        lines.append(f"  EXECUTE: {tool_name}")
-        lines.append(f"    Args: {json.dumps(args, ensure_ascii=False)[:200]}")
+        lines.append(f"  Execute  {tool_name}")
+        lines.append(f"  Args     {json.dumps(args, ensure_ascii=False)[:200]}")
 
-    lines += [sep, "  Type 'yes' to confirm or 'no' to cancel.", sep]
+    lines.append("\n  Type 'yes' to confirm or 'no' to cancel.")
     return "\n".join(lines)
 
 
@@ -491,7 +471,7 @@ def _run_tool(tool_name: str, tool_args: dict, user_input: str) -> ToolResult:
         )
         return result
 
-    print(f"\n[Calling: {tool_name}]")
+    logger.info(f'"event":"tool_dispatch","tool":"{tool_name}"')
     logger.debug(
         f'"event":"tool_execute","tool":"{tool_name}",'
         f'"args":{json.dumps(str(tool_args))[:300]}'
@@ -530,6 +510,25 @@ def _run_tool(tool_name: str, tool_args: dict, user_input: str) -> ToolResult:
     return result
 
 
+def _detect_language(text: str) -> str:
+    """
+    Detect whether the user wrote in French or English.
+    Returns 'French' or 'English'. Defaults to 'English'.
+    """
+    t = text.lower()
+    french_words = (
+        "la", "le", "les", "de", "du", "des", "est", "sont", "que", "qui",
+        "je", "tu", "il", "elle", "nous", "vous", "ils", "elles",
+        "politique", "politiques", "règle", "afficher", "activer",
+        "désactiver", "montrer", "ajouter", "supprimer", "créer",
+        "quelles", "quels", "quelle", "quel", "comment", "pourquoi",
+        "montre", "liste", "affiche", "donne",
+    )
+    words = set(re.split(r"\W+", t))
+    french_hits = sum(1 for w in french_words if w in words)
+    return "French" if french_hits >= 2 else "English"
+
+
 def _format_tool_result(
     llm_plain:   Any,
     conversation: list,
@@ -551,15 +550,24 @@ def _format_tool_result(
     else:
         outcome_note = "\nSummarise what the system returned. Be concise."
 
+    lang = _detect_language(user_input)
+    lang_rule = (
+        f"MANDATORY: Your ENTIRE reply MUST be in {lang}. "
+        "Any other language is strictly forbidden, even if prior messages used a different language."
+    )
+
     msgs = list(conversation) + [
         HumanMessage(content=(
+            f"{lang_rule}\n\n"
             f"User request: {user_input}\n\n"
             f"System result:\n{result.for_llm()}\n\n"
             "Rules:\n"
+            f"- {lang_rule}\n"
+            "- [FORMATTING RULE]: DO NOT TRANSLATE tool outputs. Keep table headers and data "
+            "(like 'ID', 'Name', 'Action', 'Src Intf') EXACTLY as provided by the system.\n"
             "- Plain text only. No emojis. No markdown headers.\n"
             "- ASCII tables (| and -) for tabular data only.\n"
             "- Be concise — 2–4 sentences unless showing a table.\n"
-            "- Respond in the SAME LANGUAGE as the user request.\n"
             f"- Do not call any tools.\n{outcome_note}"
         ))
     ]
@@ -593,15 +601,22 @@ def _format_verified_update(
         + (f"\nVerification issues:\n{mismatches}" if vr.mismatches else "")
     )
 
+    lang = _detect_language(intent.raw_input)
+    lang_rule = (
+        f"MANDATORY: Your ENTIRE reply MUST be in {lang}. "
+        "Any other language is strictly forbidden, even if prior messages used a different language."
+    )
+
     msgs = list(conversation) + [
         HumanMessage(content=(
+            f"{lang_rule}\n\n"
             f"User request: {intent.raw_input}\n\n"
             f"Execution result (from verified FortiGate state):\n{system_data}\n\n"
-            "Report ONLY what the verified state shows. "
-            "Do NOT infer fields not listed. "
-            "If verification failed, say so explicitly. "
-            "Plain text. No emojis. No markdown. "
-            "Same language as the user request."
+            "Rules:\n"
+            f"- {lang_rule}\n"
+            "- Report ONLY what the verified state shows. Do NOT infer fields not listed.\n"
+            "- If verification failed, say so explicitly.\n"
+            "- Plain text. No emojis. No markdown."
         ))
     ]
     return _invoke(llm_plain, msgs).content
@@ -613,19 +628,25 @@ def _format_knowledge(
     raw_chunks:   str,
     user_input:   str,
 ) -> str:
+    lang = _detect_language(user_input)
+    lang_rule = (
+        f"MANDATORY: Your ENTIRE reply MUST be in {lang}. "
+        "Any other language is strictly forbidden, even if prior messages used a different language."
+    )
+
     msgs = list(conversation) + [
         HumanMessage(content=(
+            f"{lang_rule}\n\n"
             f"User question: {user_input}\n\n"
             f"Documentation retrieved:\n{raw_chunks}\n\n"
-            "Synthesise a clean, direct answer from the documentation above.\n"
+            f"Synthesise a clean, direct answer from the documentation above.\n"
             "Rules:\n"
+            f"- {lang_rule}\n"
             "- Extract only information that answers the question.\n"
-            "- Ignore page numbers, headers, table-of-contents fragments, "
-            "and PDF extraction artefacts.\n"
+            "- Ignore page numbers, headers, table-of-contents fragments, and PDF extraction artefacts.\n"
             "- Include CLI commands in a plain code block when relevant.\n"
             "- Plain text. No emojis. No markdown headers.\n"
-            "- If the documentation does not contain the answer, say so clearly.\n"
-            "- Respond in the same language as the user question."
+            "- If the documentation does not contain the answer, say so clearly."
         ))
     ]
     return _invoke(llm_plain, msgs).content
@@ -637,19 +658,26 @@ def _format_security_analysis(
     raw:          str,
     user_input:   str,
 ) -> str:
+    lang = _detect_language(user_input)
+    lang_rule = (
+        f"MANDATORY: Your ENTIRE reply MUST be in {lang}. "
+        "Any other language is strictly forbidden, even if prior messages used a different language."
+    )
+
     msgs = list(conversation) + [
         HumanMessage(content=(
+            f"{lang_rule}\n\n"
             f"User request: {user_input}\n\n"
             f"Security analysis results:\n{raw}\n\n"
             "Present these findings as a professional cybersecurity report:\n"
+            f"- {lang_rule}\n"
             "- One-sentence executive summary.\n"
             "- Group findings by severity: CRITICAL, HIGH, MEDIUM, LOW, INFO.\n"
             "- For each finding: issue, risk, specific recommended fix.\n"
             "- End with three prioritised next steps the operator should take now.\n"
             "- Plain text. No emojis. No markdown headers.\n"
             "- ASCII tables for comparisons if helpful.\n"
-            "- Direct and actionable — not verbose.\n"
-            "- Same language as the user request."
+            "- Direct and actionable — not verbose."
         ))
     ]
     return _invoke(llm_plain, msgs).content
@@ -919,6 +947,9 @@ def _grounded_to_tool_args(grounded: GroundedIntentSchema) -> Optional[dict]:
             return {"ip_address": ip, "direction": dir}
 
         if intent == NLUIntentType.BACKUP_CONFIG:
+            return {}
+
+        if intent == NLUIntentType.REBOOT_SYSTEM:
             return {}
 
         logger.error(f'"event":"bridge_unhandled_intent","intent":"{intent.value}"')
@@ -1223,8 +1254,21 @@ class AgentSession:
             scope = "full"
 
         try:
-            report = run_compliance_check(scope=scope)
-            answer = report.format()
+            if scope == "full":
+                from insights import run_analysis
+                insights_report = run_analysis()
+                report = run_compliance_check(scope="full")
+                
+                answer = (
+                    f"{insights_report}\n\n"
+                    f"============================================================\n"
+                    f"  DETAILED COMPLIANCE POSTURE AUDIT\n"
+                    f"============================================================\n\n"
+                    f"{report.format()}"
+                )
+            else:
+                report = run_compliance_check(scope=scope)
+                answer = report.format()
         except Exception as exc:
             logger.error(f'"event":"compliance_check_fail","error":"{exc}"')
             answer = (
@@ -1417,6 +1461,37 @@ class AgentSession:
             )
 
         # Build BatchUpdateIntent from grounded results
+        if schema.intent == NLUIntentType.DELETE_POLICY:
+            target_pids = [g.policy_id for g in batch_grounded.grounded_intents if g.policy_id]
+            if not target_pids:
+                return AgentResponse(text="No valid policies found to delete.", kind=ResponseKind.ANSWER)
+            
+            lines = ["\n  CONFIRMATION REQUIRED", "  " + "─" * 40]
+            lines.append("  Permanently delete:")
+            for g in batch_grounded.grounded_intents:
+                lines.append(f"    ✖  {g.policy_display}")
+            
+            if batch_grounded.failed_policies:
+                lines.append(
+                    f"\n  ⚠  Could not validate — will be skipped: "
+                    f"{', '.join(batch_grounded.failed_policies)}"
+                )
+
+            lines += [
+                "  ⚠  This action is destructive and cannot be undone.",
+                "\n  Type 'yes' to confirm or 'no' to cancel.",
+            ]
+            self._pending = ConfirmationState(
+                tool_name="tool_batch_delete_policy",
+                tool_args={"policy_ids": target_pids},
+                original_input=schema.raw_input,
+            )
+            return AgentResponse(
+                text="\n".join(lines),
+                kind=ResponseKind.CONFIRMATION,
+                pending=True,
+            )
+
         from intent_parser import BatchUpdateIntent, UpdateIntent, FieldDelta, FieldOp
 
         _OP_MAP = {"add": FieldOp.ADD, "remove": FieldOp.REMOVE,
@@ -1466,27 +1541,22 @@ class AgentSession:
         )
 
         # Build confirmation screen
-        sep   = "=" * 55
-        lines = [sep, "  CONFIRMATION REQUIRED (MULTI-POLICY)", sep, ""]
+        lines = ["\n  CONFIRMATION REQUIRED", "  " + "─" * 40]
 
         for grounded in batch_grounded.grounded_intents:
-            lines.append(f"  UPDATE {grounded.policy_display}:")
+            lines.append(f"  Update {grounded.policy_display}:")
             if batch_intents:
                 lines.append(batch_intents[0].describe())
-            lines.append("")
 
         if batch_grounded.failed_policies:
             lines.append(
-                f"  WARNING: These policies could not be validated "
-                f"and will be SKIPPED: {', '.join(batch_grounded.failed_policies)}"
+                f"\n  ⚠  Could not validate — will be skipped: "
+                f"{', '.join(batch_grounded.failed_policies)}"
             )
-            lines.append("")
 
         lines += [
-            "  Current state will be fetched before applying each change.",
-            sep,
-            "  Type 'yes' to confirm or 'no' to cancel.",
-            sep,
+            "  State will be re-read from FortiGate before each change.",
+            "\n  Type 'yes' to confirm or 'no' to cancel.",
         ]
 
         self._pending = ConfirmationState(
@@ -1570,6 +1640,17 @@ class AgentSession:
                 kind=ResponseKind.ERROR,
             )
         if kind == "api":
+            msg = nlu_result.error_msg.lower()
+            is_rate_limit = "429" in msg or "rate_limit" in msg or "rate limit" in msg
+            if is_rate_limit:
+                return AgentResponse(
+                    text=(
+                        "The Mistral API rate limit was reached (too many requests).\n"
+                        "Please wait 30-60 seconds and try again.\n"
+                        "If this happens frequently, consider upgrading your Mistral plan."
+                    ),
+                    kind=ResponseKind.ERROR,
+                )
             return AgentResponse(
                 text=(
                     "Could not reach the AI interpretation service.\n"
@@ -1577,6 +1658,7 @@ class AgentSession:
                 ),
                 kind=ResponseKind.ERROR,
             )
+
 
         logger.debug(
             f'"event":"nlu_parse_fail",'
@@ -1713,6 +1795,10 @@ class AgentSession:
             "allowaccess":    "Which protocols to allow? (e.g. https ssh ping)",
             "neighbor_id":    "Which policy to move relative to?",
             "move_action":    "Before or after the reference policy?",
+            "destination":    "What is the destination subnet? (e.g. 10.0.0.0/24)",
+            "gateway":        "What is the gateway IP address?",
+            "device":         "Which output interface? (e.g. port1, wan1)",
+            "create_params":  "Please provide the required parameters.",
         }
 
         missing = [
@@ -1797,20 +1883,15 @@ class AgentSession:
                 kind=ResponseKind.ANSWER,
             )
 
-        sep = "=" * 55
-
         lines = [
-            sep,
-            "  CONFIRMATION REQUIRED",
-            sep,
-            f"  UPDATE {grounded.policy_display}:",
+            "\n  CONFIRMATION REQUIRED",
+            "  " + "─" * 40,
+            f"  Update {grounded.policy_display}:",
             "",
             intent_obj.describe(),
             "",
-            "  Current state will be fetched before applying changes.",
-            sep,
-            "  Type 'yes' to confirm or 'no' to cancel.",
-            sep,
+            "  State will be re-read from FortiGate before applying changes.",
+            "\n  Type 'yes' to confirm or 'no' to cancel.",
         ]
 
         self._pending = ConfirmationState(
@@ -1851,6 +1932,10 @@ class AgentSession:
         # NEW: Multi-policy batch update
         if pc.tool_name == "tool_batch_update_policy" and "_batch_intent" in pc.tool_args:
             return self._execute_batch_update(pc)
+
+        # Multi-policy batch delete
+        if pc.tool_name == "tool_batch_delete_policy":
+            return self._execute_batch_delete(pc)
 
         # All other write operations
         if pc.is_first:
@@ -2113,10 +2198,35 @@ class AgentSession:
             ))
 
         # Build natural-language response
-        answer = self._format_batch_results(batch, results)
-        self._record(pc.original_input, answer)
         self._pending = None
-        return AgentResponse(text=answer, kind=ResponseKind.ANSWER)
+        text = self._format_batch_results(batch, results)
+        self._record(pc.original_input, text)
+        return AgentResponse(text=text, kind=ResponseKind.ANSWER)
+
+    def _execute_batch_delete(self, pc: ConfirmationState) -> AgentResponse:
+        """
+        Execute a confirmed multi-policy batch delete.
+        """
+        from modules.policies import delete_policy
+        pids = pc.tool_args.get("policy_ids", [])
+        
+        results_lines = [f"Batch delete completed: {len(pids)} policies processed.", ""]
+        
+        for pid in pids:
+            # Capture snapshot before delete
+            capture_policy_snapshot(self.snapshots, pid, pc.original_input[:80])
+            r = delete_policy(pid)
+            if r.get("status") == "success":
+                results_lines.append(f"  ✓ Deleted policy ID {pid}")
+                log_action("TOOL_BATCH_DELETE_POLICY", pc.original_input, "tool_delete_policy", f"policy_id={pid}", "Deleted successfully", "success")
+            else:
+                results_lines.append(f"  ✗ Failed to delete policy ID {pid}: {r.get('cli_error', r)}")
+                log_action("TOOL_BATCH_DELETE_POLICY", pc.original_input, "tool_delete_policy", f"policy_id={pid}", "Delete failed", "error")
+                
+        self._pending = None
+        text = "\n".join(results_lines)
+        self._record(pc.original_input, text)
+        return AgentResponse(text=text, kind=ResponseKind.ANSWER)
 
 
 

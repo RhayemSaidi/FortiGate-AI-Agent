@@ -1,5 +1,5 @@
 """
-confirmation.py — YES/NO confirmation buttons and flow.
+confirmation.py — Minimal YES/NO confirmation buttons.
 """
 from __future__ import annotations
 
@@ -8,57 +8,48 @@ from ui.utils.state import get_agent, push_message
 
 
 def render_confirmation_buttons() -> None:
-    """
-    Render YES / NO buttons for pending write confirmations.
-    Buttons are only shown when st.session_state.pending is True.
-    """
     if not st.session_state.get("pending", False):
         return
 
-    st.markdown(
-        '<div style="max-width:420px;margin:0.25rem 0 1rem 2.75rem">',
-        unsafe_allow_html=True,
+    is_danger = any(
+        k in st.session_state.get("pending_text", "").upper()
+        for k in ("DELETE", "PERMANENTLY", "BLOCK", "REBOOT")
     )
 
-    col_yes, col_no, _ = st.columns([1.2, 1, 3])
+    st.markdown('<div style="margin-left:2.2rem;margin-top:0.35rem;margin-bottom:0.5rem">', unsafe_allow_html=True)
+
+    col_yes, col_no, _ = st.columns([0.9, 0.9, 5])
 
     with col_yes:
-        st.markdown('<div class="btn-confirm">', unsafe_allow_html=True)
-        if st.button("✓ Confirm", key="btn_yes", use_container_width=True):
-            _handle_confirmation("yes")
-        st.markdown('</div>', unsafe_allow_html=True)
+        cls = "btn-danger" if is_danger else "btn-ok"
+        st.markdown(f'<div class="{cls}">', unsafe_allow_html=True)
+        if st.button("Confirm", key="btn_yes", use_container_width=True):
+            _handle("yes")
+        st.markdown("</div>", unsafe_allow_html=True)
 
     with col_no:
         st.markdown('<div class="btn-cancel">', unsafe_allow_html=True)
-        if st.button("✗ Cancel", key="btn_no", use_container_width=True):
-            _handle_confirmation("no")
-        st.markdown('</div>', unsafe_allow_html=True)
+        if st.button("Cancel", key="btn_no", use_container_width=True):
+            _handle("no")
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
-def _handle_confirmation(answer: str) -> None:
-    """Process a yes/no answer through the agent's confirmation handler."""
-    from ui.utils.state import push_message
-
+def _handle(answer: str) -> None:
     agent = get_agent()
+    push_message("user", "Confirmed" if answer == "yes" else "Cancelled")
 
-    # Push user's answer as a message
-    label = "✓ Confirmed" if answer == "yes" else "✗ Cancelled"
-    push_message("user", label)
-
-    # Process through agent — this calls _handle_confirmation() internally
     response = agent.process(answer)
+    push_message(role="agent", content=response.text, kind=response.kind.value)
 
-    push_message(
-        role="agent",
-        content=response.text,
-        kind=response.kind.value,
-    )
+    from core import ResponseKind
+    if response.kind == ResponseKind.CONFIRMATION:
+        st.session_state.pending      = True
+        st.session_state.pending_text = response.text
+    else:
+        st.session_state.pending      = False
+        st.session_state.pending_text = ""
 
-    # Clear pending state
-    st.session_state.pending     = False
-    st.session_state.pending_text = ""
-    st.session_state.input_key  += 1
-
+    st.session_state.input_key += 1
     st.rerun()

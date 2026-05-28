@@ -99,6 +99,13 @@ _SECURITY_ANALYSIS_PATTERNS = [
     re.compile(r'\b(analyse|analyser)\s+(la\s+)?(s[eé]curit[eé]|configuration|les\s+politiques)\b', re.I),
     re.compile(r'\btout\s+v[eé]rifier\b', re.I),
     re.compile(r'\bscan\s+(my\s+)?(network|firewall|policies|config)\b', re.I),
+    # Security state / status / posture queries
+    re.compile(r'\b(security\s+(state|status|posture|level|health|overview|summary|situation))\b', re.I),
+    re.compile(r'\b(firewall\s+(health|state|status|overview|security))\b', re.I),
+    re.compile(r'\b(show|check|get|tell\s+me|give\s+me)\s+(me\s+)?(the\s+)?security\s+(state|status|posture|level|health|overview|summary)\b', re.I),
+    re.compile(r'\b(how\s+(safe|secure)\s+(is|are)\s+(my|the)\s+(firewall|network|policies))\b', re.I),
+    re.compile(r'\b(is\s+(my|the)\s+(firewall|network)\s+(secure|safe|ok|compliant))\b', re.I),
+    re.compile(r'\b(any\s+(security\s+)?(issues?|risks?|problems?|vulnerabilit\w*|misconfigurations?))\b', re.I),
 ]
 
 # ── Write actions ─────────────────────────────────────────
@@ -183,6 +190,9 @@ _WRITE_ACTION_PATTERNS = [
     re.compile(r'\bsave\s+(the\s+)?(config\w*|configuration)\b', re.I),
     # Port/log modifications
     re.compile(r'\b(change|set|modifier)\s+(log|logging|logtraffic)\b', re.I),
+    # Reboot / System Control
+    re.compile(r'\b(reboot|restart|shut\s*down)\s+(the\s+)?(firewall|system|device|appliance|fortigate)\b', re.I),
+    re.compile(r'\b(red[eé]marrer|rebooter|[eé]teindre)\s+(le\s+)?(pare.?feu|firewall|syst[eè]me)\b', re.I),
 ]
 
 # ── Live reads — queries about current firewall state ──────
@@ -358,9 +368,9 @@ _KNOWLEDGE_STARTERS = [
 _LIVE_ENTITY_INDICATORS = re.compile(
     r'\b('
     r'policy\s+\d+'
-    r'|policy\s+(?!in\b|on\b|for\b|with\b|and\b|or\b)[A-Za-z][A-Za-z0-9_\-]+'
+    r'|policy\s+(?!in\b|on\b|for\b|with\b|and\b|or\b|using\b|via\b|through\b|from\b|by\b|a\b|the\b|to\b|that\b|which\b|is\b|are\b|can\b|will\b|should\b|must\b|has\b|have\b|had\b)[A-Za-z][A-Za-z0-9_\-]+'
     r'|rule\s+\d+'
-    r'|rule\s+(?!in\b|on\b|for\b|with\b|and\b|or\b)[A-Za-z][A-Za-z0-9_\-]+'
+    r'|rule\s+(?!in\b|on\b|for\b|with\b|and\b|or\b|using\b|via\b|through\b|from\b|by\b|a\b|the\b|to\b|that\b|which\b|is\b|are\b)[A-Za-z][A-Za-z0-9_\-]+'
     r'|interface\s+\w+'
     r'|address\s+\w+'
     r'|port\d+'
@@ -390,18 +400,8 @@ def _classify_deterministic(text: str) -> Optional[RouteResult]:
         if p.search(t):
             return RouteResult(RouteCategory.SECURITY_ANALYSIS, "certain", "deterministic")
 
-    # Write patterns checked BEFORE live reads
-    # (some write patterns have action verbs that could confuse read patterns)
-    for p in _WRITE_ACTION_PATTERNS:
-        if p.search(t):
-            return RouteResult(RouteCategory.WRITE_ACTION, "high", "deterministic")
-
-    # Live reads
-    for p in _LIVE_READ_PATTERNS:
-        if p.search(t):
-            return RouteResult(RouteCategory.LIVE_READ, "high", "deterministic")
-
     # Knowledge questions — only when NO live entity is referenced
+    # Checked before write patterns so 'how can I create a policy' routes to knowledge instead of failing as an action
     for p in _KNOWLEDGE_STARTERS:
         if p.search(t):
             if _LIVE_ENTITY_INDICATORS.search(t):
@@ -413,6 +413,16 @@ def _classify_deterministic(text: str) -> Optional[RouteResult]:
                     hint="entity_query",
                 )
             return RouteResult(RouteCategory.KNOWLEDGE, "high", "deterministic")
+
+    # Write patterns
+    for p in _WRITE_ACTION_PATTERNS:
+        if p.search(t):
+            return RouteResult(RouteCategory.WRITE_ACTION, "high", "deterministic")
+
+    # Live reads
+    for p in _LIVE_READ_PATTERNS:
+        if p.search(t):
+            return RouteResult(RouteCategory.LIVE_READ, "high", "deterministic")
 
     return None
 
@@ -479,10 +489,32 @@ def _classify_llm(
     )
 
     try:
-        response = llm_plain.invoke([
-            SystemMessage(content=_ROUTER_SYSTEM_PROMPT),
-            HumanMessage(content=f'Classify this input: "{text}"{context_line}'),
-        ])
+        import time
+        retries = 3
+        response = None
+        for attempt in range(retries):
+            try:
+                response = llm_plain.invoke([
+                    SystemMessage(content=_ROUTER_SYSTEM_PROMPT),
+                    HumanMessage(content=f'Classify this input: "{text}"{context_line}'),
+                ])
+                break
+            except Exception as exc:
+                s = str(exc).lower()
+                recoverable = any(
+                    k in s
+                    for k in ("429", "rate_limit", "timeout", "timed out",
+                               "503", "502", "unreachable")
+                )
+                if recoverable and attempt < retries - 1:
+                    wait = 3 * (attempt + 1)
+                    logger.warning(
+                        f'"event":"router_llm_retry","attempt":{attempt + 1},'
+                        f'"wait":{wait},"error":"{exc}"'
+                    )
+                    time.sleep(wait)
+                else:
+                    raise
 
         raw = response.content.strip()
         raw = re.sub(r"```(?:json)?\s*", "", raw)

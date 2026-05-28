@@ -28,25 +28,27 @@ class ValidationResult:
     def format(self) -> str:
         lines = []
         if self.errors:
-            lines += ["\n" + "="*55, "  VALIDATION FAILED", "="*55]
+            lines.append("\n  VALIDATION FAILED")
+            lines.append("  " + "─" * 40)
             for e in self.errors:
-                lines.append(f"  [ERROR]   {e}")
+                lines.append(f"  ✖  {e}")
         if self.warnings:
             if not self.errors:
-                lines += ["\n" + "="*55, "  VALIDATION WARNING", "="*55]
+                lines.append("\n  VALIDATION WARNING")
+                lines.append("  " + "─" * 40)
             for w in self.warnings:
-                lines.append(f"  [WARNING] {w}")
+                lines.append(f"  ⚠  {w}")
         if self.suggestions:
-            lines.append("  " + "-"*51)
             for s in self.suggestions:
-                lines.append(f"  [HINT]    {s}")
+                lines.append(f"  →  {s}")
         if not self.valid:
-            lines += ["="*55, "  Action blocked. Fix the errors above.", "="*55]
+            lines.append("\n  Action blocked. Resolve the errors above.")
         elif self.warnings:
-            lines += ["="*55, "  Type 'yes' to proceed anyway or 'no' to cancel.", "="*55]
+            lines.append("\n  Type 'yes' to proceed anyway or 'no' to cancel.")
         else:
-            lines += ["\n"+"="*55, "  VALIDATION PASSED", "="*55,
-                      "  All checks passed. Safe to proceed.", "="*55]
+            lines.append("\n  VALIDATION PASSED")
+            lines.append("  " + "─" * 40)
+            lines.append("  All checks passed. Safe to proceed.")
         return "\n".join(lines)
 
     def is_clean(self) -> bool:

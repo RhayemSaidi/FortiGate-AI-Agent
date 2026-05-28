@@ -1,15 +1,17 @@
 """
-chat.py — Message rendering components.
+chat.py — Minimal message rendering.
+One user renderer. One agent renderer. Content-type routing kept simple.
 """
 from __future__ import annotations
 
+import re
 import streamlit as st
 from ui.utils.formatting import (
-    render_policy_table,
-    detect_content_type,
+    escape_html, md_to_html, render_policy_table, detect_content_type,
     parse_verification_block,
-    escape_html,
 )
+
+_ICON = '<div class="agent-icon">SYS</div>'
 
 
 def render_user_message(text: str) -> None:
@@ -20,253 +22,244 @@ def render_user_message(text: str) -> None:
 
 
 def render_agent_message(text: str, kind: str = "answer") -> None:
-    """Route the agent's reply to the correct renderer."""
-    content_type = detect_content_type(text)
+    ct = detect_content_type(text)
 
-    if kind == "confirmation" or content_type == "confirmation":
-        _render_confirmation_preview(text)
-        return
+    # Guard: only route to confirmation card if the text actually carries
+    # confirmation content. Prevents stale session kind values from
+    # accidentally rendering capability/answer text as a confirmation card.
+    _is_real_confirmation = (
+        "CONFIRMATION REQUIRED" in text.upper()
+        or "VALIDATION WARNING" in text.upper()
+        or "Type 'yes'" in text
+    )
 
-    if content_type == "verification":
+    if (kind == "confirmation" or ct == "confirmation") and _is_real_confirmation:
+        _render_confirmation(text)
+    elif ct == "verification":
         _render_verification(text)
-        return
-
-    if content_type == "table":
-        _render_table_message(text)
-        return
-
-    if content_type == "security":
-        _render_security_findings(text)
-        return
-
-    if content_type == "error":
-        _render_error_message(text)
-        return
-
-    _render_plain_message(text)
+    elif ct == "table":
+        _render_table(text)
+    elif ct == "security":
+        _render_security(text)
+    elif ct == "error":
+        _render_with_tag(text, "ERROR", "err",
+                         text.replace("OPERATION FAILED:", "").replace("[ERROR]", "").strip())
+    elif ct == "success":
+        _render_with_tag(text, "OK", "ok",
+                         text.replace("[SUCCESS]", "").strip())
+    else:
+        _render_plain(text)
 
 
-def _render_plain_message(text: str) -> None:
-    # Split text: if it contains a markdown table, render it separately
+# ── Plain ──────────────────────────────────────────────────────────────────
+def _render_plain(text: str) -> None:
     st.markdown(
-        f"""
-<div class="msg-agent">
-  <div class="avatar">FG</div>
-  <div class="bubble">{_md_to_html(text)}</div>
-</div>""",
+        f'<div class="msg-agent">{_ICON}'
+        f'<div class="bubble">{md_to_html(text)}</div></div>',
         unsafe_allow_html=True,
     )
 
 
-def _render_table_message(text: str) -> None:
+# ── Table ──────────────────────────────────────────────────────────────────
+def _render_table(text: str) -> None:
     parts     = text.split("\n")
-    pre_table = []
-    table_buf = []
+    pre, tbl  = [], []
     in_table  = False
-
     for line in parts:
-        if "|" in line:
+        if "|" in line and not in_table:
             in_table = True
-        if in_table:
-            table_buf.append(line)
-        else:
-            pre_table.append(line)
+        (tbl if in_table else pre).append(line)
 
-    pre_html   = _md_to_html("\n".join(pre_table)) if pre_table else ""
-    table_html = render_policy_table("\n".join(table_buf)) if table_buf else ""
+    pre_html = md_to_html("\n".join(pre)).strip()
+    tbl_html = render_policy_table("\n".join(tbl)) if tbl else ""
+    pre_block = f'<div style="margin-bottom:0.5rem;color:#c4c4c4">{pre_html}</div>' if pre_html else ""
 
     st.markdown(
-        f"""
-<div class="msg-agent">
-  <div class="avatar">FG</div>
-  <div class="bubble">{pre_html}{table_html}</div>
-</div>""",
+        f'<div class="msg-agent">{_ICON}'
+        f'<div class="bubble" style="max-width:92%">{pre_block}{tbl_html}</div></div>',
         unsafe_allow_html=True,
     )
 
 
+# ── Verification ───────────────────────────────────────────────────────────
 def _render_verification(text: str) -> None:
     vr = parse_verification_block(text)
-
     if vr["passed"]:
-        badge = '<span class="badge-verified">✓ Verified on FortiGate</span>'
-        lines = "".join(
-            f'<div style="font-size:0.82rem;color:#8b949e;font-family:JetBrains Mono,monospace;">'
-            f'  {escape_html(f)}</div>'
+        tag  = '<span class="tag ok">Verified</span>'
+        rows = "".join(
+            f'<div style="font-size:0.76rem;color:#666666;font-family:\'JetBrains Mono\',monospace;'
+            f'padding:0.05rem 0">  {escape_html(f)}</div>'
             for f in vr["fields"]
         )
-        body = f"{badge}{lines}"
+        body = f'<div style="margin-top:0.8rem">{tag}{rows}</div>'
     else:
-        badge = '<span class="badge-failed">⚠ Verification issues detected</span>'
-        mismatches = "".join(
-            f'<div style="font-size:0.82rem;color:#f85149;font-family:JetBrains Mono,monospace;">'
-            f'  ✗ {escape_html(m)}</div>'
+        tag  = '<span class="tag err">Mismatch</span>'
+        rows = "".join(
+            f'<div style="font-size:0.76rem;color:#888888;font-family:\'JetBrains Mono\',monospace;'
+            f'padding:0.05rem 0">  ✗ {escape_html(m)}</div>'
             for m in vr["mismatches"]
         )
-        body = f"{badge}{mismatches}"
+        body = f'<div style="margin-top:0.8rem">{tag}{rows}</div>'
 
-    # Also show the surrounding message text
-    main_text = text.split("[Verified")[0].split("[WARNING")[0].strip()
-    if main_text:
-        body = f'<div style="margin-bottom:0.6rem">{_md_to_html(main_text)}</div>{body}'
+    lead = text.split("[Verified")[0].split("[WARNING")[0].strip()
+    if lead:
+        if re.search(r'\|[-\s|]+\|', lead):
+            parts = lead.split("\n")
+            pre, tbl = [], []
+            in_table = False
+            for line in parts:
+                if "|" in line and not in_table:
+                    in_table = True
+                (tbl if in_table else pre).append(line)
+            
+            pre_html = md_to_html("\n".join(pre)).strip()
+            tbl_html = render_policy_table("\n".join(tbl)) if tbl else ""
+            pre_block = f'<div style="margin-bottom:0.5rem;color:#c4c4c4">{pre_html}</div>' if pre_html else ""
+            lead_html = f'{pre_block}{tbl_html}'
+        else:
+            lead_html = f'<div style="margin-bottom:0.4rem;color:#dddddd;">{md_to_html(lead)}</div>'
+            
+        body = f'{lead_html}{body}'
 
     st.markdown(
-        f"""
-<div class="msg-agent">
-  <div class="avatar">FG</div>
-  <div class="bubble">{body}</div>
-</div>""",
+        f'<div class="msg-agent">{_ICON}'
+        f'<div class="bubble" style="width:100%; max-width:92%">{body}</div></div>',
         unsafe_allow_html=True,
     )
 
 
-def _render_confirmation_preview(text: str) -> None:
-    """
-    Render a confirmation request as a styled preview card.
-    The actual YES/NO buttons are in confirmation.py and rendered
-    in the main app separately.
-    """
-    is_danger = any(k in text.upper() for k in ("DELETE", "PERMANENTLY", "BLOCK"))
-    card_class = "confirm-card danger" if is_danger else "confirm-card"
-    title_text = "⚠ Dangerous Operation — Confirm" if is_danger else "Confirmation Required"
+# ── Confirmation preview ───────────────────────────────────────────────────
+def _render_confirmation(text: str) -> None:
+    is_danger  = any(k in text.upper() for k in ("DELETE", "PERMANENTLY", "BLOCK", "REBOOT", "[WARNING]"))
+    is_create  = "CREATE" in text.upper()
+    card_cls   = "confirm-card danger" if is_danger else "confirm-card"
+    
+    if "VALIDATION WARNING" in text.upper():
+        label_text = "VALIDATION WARNING"
+    elif is_danger:
+        label_text = "DESTRUCTIVE OPERATION"
+    else:
+        label_text = "CONFIRMATION REQUIRED"
 
-    # Clean the text
-    clean = (
-        text.replace("=" * 55, "")
-            .replace("Type 'yes' to confirm or 'no' to cancel.", "")
-            .strip()
-    )
-    lines = [l for l in clean.splitlines() if l.strip()]
-    body  = "<br>".join(escape_html(l) for l in lines)
+    # Capture the instruction before removing it
+    has_instruction = False
+    instruction_text = ""
+    if "Type 'yes' to proceed anyway or 'no' to cancel." in text:
+        has_instruction = True
+        instruction_text = "Type 'yes' to proceed anyway or 'no' to cancel."
+    elif "Type 'yes' to confirm or 'no' to cancel." in text:
+        has_instruction = True
+        instruction_text = "Type 'yes' to confirm or 'no' to cancel."
+
+    clean = re.sub(r'={10,}', '', text)
+    clean = re.sub(r"-{10,}", "", clean)
+    clean = re.sub(r'─{4,}', '', clean)           # strip new ─ separator lines
+    clean = clean.replace("Type 'yes' to confirm or 'no' to cancel.", "")
+    clean = clean.replace("Type 'yes' to proceed anyway or 'no' to cancel.", "")
+    clean = clean.strip()
+    
+    lines = [
+        l.strip() for l in clean.splitlines()
+        if l.strip() and "CONFIRMATION REQUIRED" not in l.upper()
+        and "VALIDATION WARNING" not in l.upper()
+    ]
+    
+    formatted_lines = []
+    for l in lines:
+        if "[WARNING]" in l or l.lstrip().startswith("⚠"):
+            l_clean = l.replace("[WARNING]", "").replace("⚠", "").strip()
+            formatted_lines.append(f'<span style="color:#ffaa00;font-weight:500;">⚠ WARNING:</span> <span style="color:#eeeeee">{escape_html(l_clean)}</span>')
+        elif l.lstrip().startswith("✖"):
+            l_clean = l.replace("✖", "").strip()
+            formatted_lines.append(f'<span style="color:#ff6666;">✖</span> <span style="color:#eeeeee">{escape_html(l_clean)}</span>')
+        elif l.lstrip().startswith("→"):
+            l_clean = l.replace("→", "").strip()
+            formatted_lines.append(f'<span style="color:#888888;">→</span> <span style="color:#aaaaaa;font-size:0.85rem">{escape_html(l_clean)}</span>')
+        else:
+            formatted_lines.append(escape_html(l))
+            
+    body = "<br>".join(formatted_lines)
+    
+    if is_create:
+        body += '<br><br><span style="font-size:0.75rem;color:#ffaa00;">⚠ Note: CREATE operations cannot be automatically rolled back.</span>'
+
+    if has_instruction:
+        body += f'<div style="margin-top:0.8rem;padding-top:0.8rem;border-top:1px solid #222;font-size:0.75rem;color:#888888;">{escape_html(instruction_text)}</div>'
 
     st.markdown(
-        f"""
-<div class="msg-agent">
-  <div class="avatar">FG</div>
-  <div style="max-width:82%">
-    <div class="{card_class}">
-      <div class="confirm-title">{title_text}</div>
-      <div class="confirm-body">{body}</div>
-    </div>
-  </div>
-</div>""",
+        f'<div class="msg-agent">{_ICON}'
+        f'<div style="max-width:85%">'
+        f'<div class="{card_cls}">'
+        f'<div class="confirm-label">{label_text}</div>'
+        f'{body}'
+        f'</div></div></div>',
         unsafe_allow_html=True,
     )
 
 
-def _render_security_findings(text: str) -> None:
-    """Parse and render a security analysis report as finding cards."""
-    import re
+# ── Security findings ──────────────────────────────────────────────────────
+def _render_security(text: str) -> None:
+    """Render security report as minimal tagged list — no heavy cards."""
+    # Extract header
+    parts  = re.split(r'\b(CRITICAL|HIGH|MEDIUM|LOW|INFO):', text, flags=re.I)
+    header = parts[0].strip()
+    header_html = f'<div style="margin-bottom:0.6rem;color:#c4c4c4">{md_to_html(header)}</div>' if header else ""
 
-    severity_map = {
-        "critical": "critical",
-        "high":     "high",
-        "medium":   "medium",
-        "low":      "low",
-        "info":     "info",
+    rows_html = ""
+    sev_color = {
+        "critical": "#ffffff",
+        "high":     "#dddddd",
+        "medium":   "#aaaaaa",
+        "low":      "#777777",
+        "info":     "#555555",
     }
-
-    # Extract header/summary (text before first severity keyword)
-    header_match = re.split(
-        r'\b(CRITICAL|HIGH|MEDIUM|LOW|INFO)\b', text, maxsplit=1, flags=re.I
-    )
-    header_html = (
-        f'<div style="margin-bottom:0.75rem;font-size:0.9rem">'
-        f'{_md_to_html(header_match[0].strip())}</div>'
-        if header_match[0].strip() else ""
-    )
-
-    # Extract finding blocks
-    blocks    = re.split(r'\b(CRITICAL|HIGH|MEDIUM|LOW|INFO):', text, flags=re.I)
-    cards_html = ""
     i = 1
-    while i < len(blocks) - 1:
-        level   = blocks[i].lower().strip()
-        content = blocks[i + 1].strip() if i + 1 < len(blocks) else ""
-        sclass  = severity_map.get(level, "info")
+    while i < len(parts) - 1:
+        level   = parts[i].lower().strip()
+        content = parts[i + 1].strip() if i + 1 < len(parts) else ""
+        lines   = content.strip().splitlines()
+        title   = lines[0].strip() if lines else ""
+        detail  = " ".join(lines[1:]).strip() if len(lines) > 1 else ""
+        color   = sev_color.get(level, "#777777")
 
-        # Split content into first line (title) + rest (detail)
-        lines      = content.strip().splitlines()
-        title_text  = lines[0].strip() if lines else ""
-        detail_text = "\n".join(lines[1:]).strip() if len(lines) > 1 else ""
-
-        detail_html = (
-            f'<div style="font-size:0.82rem;color:#8b949e;margin-top:0.3rem;'
-            f'line-height:1.5">{escape_html(detail_text)}</div>'
-            if detail_text else ""
+        rows_html += (
+            f'<div style="padding:0.4rem 0;border-bottom:1px solid #222222">'
+            f'<span style="font-size:0.7rem;font-weight:500;text-transform:uppercase;'
+            f'letter-spacing:0.07em;color:{color};margin-right:0.6rem">{level}</span>'
+            f'<span style="font-size:0.85rem;color:#dddddd;font-weight:400">{escape_html(title)}</span>'
+            f'{"<div style=font-size:0.8rem;color:#999;margin-top:0.2rem;margin-left:0.5rem;font-weight:300>" + escape_html(detail) + "</div>" if detail else ""}'
+            f'</div>'
         )
-
-        cards_html += f"""
-<div class="finding-card {sclass}">
-  <span class="severity-badge {sclass}">{level}</span>
-  <div style="font-size:0.88rem;font-weight:500;color:#e6edf3">
-    {escape_html(title_text)}
-  </div>
-  {detail_html}
-</div>"""
         i += 2
 
-    # Footer / next steps
-    footer_match = re.search(r'(next\s+steps?|recommended?|priority).*$', text, re.I | re.S)
-    footer_html  = (
-        f'<div style="margin-top:0.75rem;font-size:0.85rem;color:#8b949e">'
-        f'{_md_to_html(footer_match.group(0))}</div>'
-        if footer_match else ""
-    )
-
-    body = header_html + cards_html + footer_html
-
     st.markdown(
-        f"""
-<div class="msg-agent">
-  <div class="avatar">FG</div>
-  <div class="bubble" style="max-width:92%">{body}</div>
-</div>""",
+        f'<div class="msg-agent">{_ICON}'
+        f'<div class="bubble" style="max-width:90%">'
+        f'{header_html}'
+        f'<div style="border-top:1px solid #1e1e1e">{rows_html}</div>'
+        f'</div></div>',
         unsafe_allow_html=True,
     )
 
 
-def _render_error_message(text: str) -> None:
-    clean = (
-        text.replace("OPERATION FAILED:", "")
-            .replace("[ERROR]", "")
-            .strip()
-    )
+# ── Success / error with tag ───────────────────────────────────────────────
+def _render_with_tag(original: str, tag_text: str, tag_cls: str, clean: str) -> None:
+    tag = f'<span class="tag {tag_cls}" style="margin-bottom:0.4rem;display:inline-block">{tag_text}</span>'
     st.markdown(
-        f"""
-<div class="msg-agent">
-  <div class="avatar" style="background:linear-gradient(135deg,#6e2020,#f85149)">FG</div>
-  <div class="bubble" style="border-color:#30363d">
-    <div style="color:#f85149;font-weight:600;font-size:0.82rem;
-    margin-bottom:0.3rem">Operation Failed</div>
-    <div style="font-size:0.88rem">{_md_to_html(clean)}</div>
-  </div>
-</div>""",
+        f'<div class="msg-agent">{_ICON}'
+        f'<div class="bubble">{tag}<br>{md_to_html(clean)}</div></div>',
         unsafe_allow_html=True,
     )
 
 
-def _md_to_html(text: str) -> str:
-    """
-    Minimal markdown → HTML conversion.
-    Handles: **bold**, `code`, line breaks.
-    """
-    import re
-    text = escape_html(text)
-    text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
-    text = re.sub(r'`(.+?)`', r'<code>\1</code>', text)
-    text = text.replace("\n", "<br>")
-    return text
-
-
+# ── Thinking indicator ─────────────────────────────────────────────────────
 def render_thinking_indicator() -> None:
     st.markdown(
-        """
-<div class="msg-agent">
-  <div class="avatar">FG</div>
-  <div class="bubble" style="color:#8b949e;font-style:italic;font-size:0.88rem">
-    <span class="status-dot pending"></span>Thinking...
-  </div>
-</div>""",
+        f'<div class="msg-agent">{_ICON}'
+        f'<div class="bubble" style="color:#555555;font-size:0.88rem;padding:0.3rem 0">'
+        f'<span class="dot1" style="display:inline-block">.</span>'
+        f'<span class="dot2" style="display:inline-block">.</span>'
+        f'<span class="dot3" style="display:inline-block">.</span>'
+        f'</div></div>',
         unsafe_allow_html=True,
     )

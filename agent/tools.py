@@ -5,7 +5,7 @@ import re
 from langchain_core.tools import tool
 from langchain.tools import tool as lc_tool
 
-from modules.system     import get_system_status
+from modules.system     import get_system_status, reboot_system
 from modules.monitor    import get_cpu_usage, get_memory_usage, get_active_sessions
 from modules.policies   import (
     list_policies, get_policy, get_policy_id_by_name,
@@ -170,27 +170,23 @@ def tool_search_policies(
 
     filter_desc = ", ".join(f"{k}={v}" for k, v in applied.items())
     lines = [
-        f"[SUCCESS] Found {count} of {total} policies matching: {filter_desc}",
-        "",
-        f"  {'ID':>3} | {'Name':<25} | {'Action':>6} | {'Status':<8} | "
-        f"{'Src Intf':<10} | {'Dst Intf':<10} | Services",
-        "  " + "-" * 90,
+        f"[SUCCESS] Found {count} of {total} policies matching: {filter_desc}\n",
+        f"| {'ID':>3} | {'Name':<25} | {'Action':<12} | {'Status':<8} | {'Src Intf':<10} | {'Dst Intf':<10} | {'Services':<20} |",
+        f"|{'---':>4}-|{'-'*26}-|{'-'*13}-|{'-'*9}-|{'-'*11}-|{'-'*11}-|{'-'*21}-|"
     ]
 
     for p in policies:
         src    = (p.get("srcintf") or [{}])[0].get("name", "?")
         dst    = (p.get("dstintf") or [{}])[0].get("name", "?")
-        svcs   = ", ".join(
-            s.get("name", "?") for s in (p.get("service") or [])
-        ) or "—"
-        flag   = " [off]" if p.get("status") == "disable" else ""
+        svcs   = ", ".join(s.get("name", "?") for s in (p.get("service") or [])) or "—"
+        flag   = " (off)" if p.get("status") == "disable" else ""
         pid    = p.get("policyid", "?")
         pname  = p.get("name", "?")
         action = p.get("action", "?")
+        status = p.get("status", "enable")
 
         lines.append(
-            f"  {pid:>3} | {pname:<25} | {action:>6}{flag:<7} | "
-            f"{p.get('status','enable'):<8} | {src:<10} | {dst:<10} | {svcs}"
+            f"| {pid:>3} | {pname:<25} | {action+flag:<12} | {status:<8} | {src:<10} | {dst:<10} | {svcs:<20} |"
         )
 
     return "\n".join(lines)
@@ -227,14 +223,13 @@ def tool_get_address_usage(address_name: str) -> str:
     lines = [
         f"[SUCCESS] Address '{address_name}' is referenced by {count} policy/policies:",
         "",
-        f"  {'ID':>3} | {'Name':<25} | {'Action':>6} | {'Status':<8} | Used as",
-        "  " + "-" * 65,
+        f"| {'ID':>3} | {'Name':<25} | {'Action':<12} | {'Status':<8} | {'Used as':<20} |",
+        f"|{'---':>4}-|{'-'*26}-|{'-'*13}-|{'-'*9}-|{'-'*21}-|"
     ]
     for p in policies:
         roles = " + ".join(p.get("roles", []))
         lines.append(
-            f"  {p['policyid']:>3} | {p['name']:<25} | "
-            f"{p['action']:>6} | {p.get('status','enable'):<8} | {roles}"
+            f"| {p['policyid']:>3} | {p['name']:<25} | {p['action']:<12} | {p.get('status','enable'):<8} | {roles:<20} |"
         )
 
     lines += [
@@ -322,17 +317,24 @@ def tool_list_policies(input: str = "") -> str:
         results = r if isinstance(r, list) else r.get("results", [])
         if not results:
             return "No firewall policies found."
-        lines = []
+        lines = [
+            f"| {'ID':>3} | {'Name':<25} | {'Action':<12} | {'Status':<8} | {'Src Intf':<10} | {'Dst Intf':<10} | {'Services':<20} |",
+            f"|{'---':>4}-|{'-'*26}-|{'-'*13}-|{'-'*9}-|{'-'*11}-|{'-'*11}-|{'-'*21}-|"
+        ]
         for p in results:
-            src = (p.get("srcintf") or [{}])[0].get("name", "?")
-            dst = (p.get("dstintf") or [{}])[0].get("name", "?")
+            src    = (p.get("srcintf") or [{}])[0].get("name", "?")
+            dst    = (p.get("dstintf") or [{}])[0].get("name", "?")
+            svcs   = ", ".join(s.get("name", "?") for s in (p.get("service") or [])) or "—"
+            flag   = " (off)" if p.get("status") == "disable" else ""
+            pid    = p.get("policyid", "?")
+            pname  = p.get("name", "?")
+            action = p.get("action", "?")
+            status = p.get("status", "enable")
+            
             lines.append(
-                f"  ID {p.get('policyid','?'):>3} | "
-                f"{p.get('name','unnamed'):<30} | "
-                f"{p.get('action','?'):>6} | "
-                f"{src} -> {dst}"
+                f"| {pid:>3} | {pname:<25} | {action+flag:<12} | {status:<8} | {src:<10} | {dst:<10} | {svcs:<20} |"
             )
-        return "Firewall Policies:\n" + "\n".join(lines)
+        return "Firewall Policies:\n\n" + "\n".join(lines)
     except Exception as exc:
         return f"[ERROR] {exc}"
 
@@ -359,20 +361,29 @@ def tool_get_policy_details(policy_id: int) -> str:
         if not p:
             return f"[ERROR] Policy ID {policy_id} not found."
 
-        return (
-            f"Policy ID    : {p.get('policyid', '?')}\n"
-            f"Name         : {p.get('name', '?')}\n"
-            f"Status       : {p.get('status', '?')}\n"
-            f"Action       : {p.get('action', '?')}\n"
-            f"Src Interface: {', '.join(i.get('name','?') for i in p.get('srcintf',[]))}\n"
-            f"Dst Interface: {', '.join(i.get('name','?') for i in p.get('dstintf',[]))}\n"
-            f"Src Address  : {', '.join(a.get('name','?') for a in p.get('srcaddr',[]))}\n"
-            f"Dst Address  : {', '.join(a.get('name','?') for a in p.get('dstaddr',[]))}\n"
-            f"Services     : {', '.join(s.get('name','?') for s in p.get('service',[]))}\n"
-            f"Schedule     : {p.get('schedule', '?')}\n"
-            f"Log Traffic  : {p.get('logtraffic', '?')}\n"
-            f"NAT          : {p.get('nat', '?')}"
-        )
+        src_intf  = ', '.join(i.get('name','?') for i in p.get('srcintf',[]))
+        dst_intf  = ', '.join(i.get('name','?') for i in p.get('dstintf',[]))
+        src_addr  = ', '.join(a.get('name','?') for a in p.get('srcaddr',[]))
+        dst_addr  = ', '.join(a.get('name','?') for a in p.get('dstaddr',[]))
+        services  = ', '.join(s.get('name','?') for s in p.get('service',[]))
+
+        lines = [
+            f"| {'Field':<15} | {'Value':<50} |",
+            f"|{'-'*17}-|{'-'*52}-|",
+            f"| {'Policy ID':<15} | {str(p.get('policyid', '?')):<50} |",
+            f"| {'Name':<15} | {p.get('name', '?'):<50} |",
+            f"| {'Status':<15} | {p.get('status', '?'):<50} |",
+            f"| {'Action':<15} | {p.get('action', '?'):<50} |",
+            f"| {'Src Interface':<15} | {src_intf:<50} |",
+            f"| {'Dst Interface':<15} | {dst_intf:<50} |",
+            f"| {'Src Address':<15} | {src_addr:<50} |",
+            f"| {'Dst Address':<15} | {dst_addr:<50} |",
+            f"| {'Services':<15} | {services:<50} |",
+            f"| {'Schedule':<15} | {p.get('schedule', '?'):<50} |",
+            f"| {'Log Traffic':<15} | {p.get('logtraffic', '?'):<50} |",
+            f"| {'NAT':<15} | {p.get('nat', '?'):<50} |"
+        ]
+        return "\n".join(lines)
     except Exception as exc:
         return f"[ERROR] {exc}"
 
@@ -1150,6 +1161,26 @@ def tool_delete_user(name: str) -> str:
         return f"[ERROR] {exc}"
 
 
+#  SYSTEM CONTROL
+# ══════════════════════════════════════════════════════════════════════════════
+
+@tool
+def tool_reboot_system(input: str = "") -> str:
+    """
+    Reboot the FortiGate firewall appliance.
+    This is a destructive action that severs all network connections and the management session.
+    """
+    try:
+        r = reboot_system()
+        if isinstance(r, dict) and r.get("status") == "success":
+            return "[SUCCESS] Firewall is rebooting. Expect connection loss."
+        return f"[ERROR] Reboot failed: {r}"
+    except Exception as exc:
+        if "timeout" in str(exc).lower() or "connection" in str(exc).lower() or "refused" in str(exc).lower():
+            return "[SUCCESS] Firewall is rebooting (connection dropped as expected)."
+        return f"[ERROR] Reboot failed: {exc}"
+
+
 #  MASTER TOOL LIST
 
 ALL_TOOLS = [
@@ -1200,6 +1231,7 @@ ALL_TOOLS = [
     tool_block_ip,
     # Write — maintenance
     tool_backup_config,
+    tool_reboot_system,
     # Intelligence
     tool_search_knowledge,
     tool_analyze_security,
@@ -1226,4 +1258,5 @@ WRITE_TOOLS = {
     "tool_delete_user",
     "tool_block_ip",
     "tool_backup_config",
+    "tool_reboot_system",
 }

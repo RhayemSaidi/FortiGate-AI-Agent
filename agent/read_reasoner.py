@@ -525,10 +525,32 @@ def _build_read_plan_llm(
     try:
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        resp = llm_plain.invoke([
-            SystemMessage(content=_READ_PLANNER_PROMPT),
-            HumanMessage(content=f'User input: "{text}"{context_hint}'),
-        ])
+        import time
+        retries = 3
+        resp = None
+        for attempt in range(retries):
+            try:
+                resp = llm_plain.invoke([
+                    SystemMessage(content=_READ_PLANNER_PROMPT),
+                    HumanMessage(content=f'User input: "{text}"{context_hint}'),
+                ])
+                break
+            except Exception as exc:
+                s = str(exc).lower()
+                recoverable = any(
+                    k in s
+                    for k in ("429", "rate_limit", "timeout", "timed out",
+                               "503", "502", "unreachable")
+                )
+                if recoverable and attempt < retries - 1:
+                    wait = 3 * (attempt + 1)
+                    logger.warning(
+                        f'"event":"read_planner_llm_retry","attempt":{attempt + 1},'
+                        f'"wait":{wait},"error":"{exc}"'
+                    )
+                    time.sleep(wait)
+                else:
+                    raise
 
         raw  = resp.content.strip()
         raw  = re.sub(r"```(?:json)?\s*", "", raw)

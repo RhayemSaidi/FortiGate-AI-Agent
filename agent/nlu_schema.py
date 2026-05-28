@@ -30,6 +30,7 @@ class NLUIntentType(Enum):
     DELETE_USER           = "delete_user"
     BLOCK_IP              = "block_ip"
     BACKUP_CONFIG         = "backup_config"
+    REBOOT_SYSTEM         = "reboot_system"
     AMBIGUOUS             = "ambiguous"
     INCOMPLETE            = "incomplete"
 
@@ -107,3 +108,10 @@ class RawIntentSchema:
 
     # ── Internal metadata — set by Python, never by Mistral ─
     raw_input:       str             = ""
+
+    # ── Conditional filter — set by NLU, evaluated deterministically ──
+    # e.g. {"field": "service", "op": "not_contains", "value": "SSH"}
+    # Supported ops: "contains", "not_contains", "eq", "neq"
+    # When present and policy_ids is empty, grounder applies this filter
+    # against all live policies to resolve the target set.
+    policy_filter:   Optional[dict]  = None

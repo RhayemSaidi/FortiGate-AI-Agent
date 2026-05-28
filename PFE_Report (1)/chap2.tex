@@ -1,0 +1,167 @@
+\chapter{State of the Art and Theoretical Background}
+
+\section{Introduction}
+The integration of conversational artificial intelligence into network orchestration represents a major technological paradigm shift in infrastructure engineering. The transition toward intent-driven networking (Intent-Based Networking or IBN) requires a comprehensive understanding of automation paradigms, semantic modeling, and formal validation. The primary objective of this chapter is to establish a rigorous theoretical foundation and conduct a structured review of the current state of the art in network automation technologies.
+
+First, we will analyze the historical evolution of network administration paradigms, tracing the path from manual interventions using command-line interfaces (CLIs) to imperative and declarative Infrastructure-as-Code (IaC) architectures. Second, we will detail the core foundations of Intent-Based Networking, exploring its closed-loop feedback control loop. Third, we will introduce a dedicated discussion on the specific challenges associated with firewall automation and FortiGate management. Fourth, we will study the contribution of Large Language Models (LLMs) in translating natural language intent into structured system payloads, while identifying their semantic limitations and the necessity of a deterministic control plane to guarantee the operational safety of network security appliances. Finally, we will present a comparative analysis of these orchestration models to justify our hybrid design.
+
+\section{Evolution of Network Administration Paradigms}
+Network infrastructure administration has historically relied on manual interventions, characterized by the direct execution of commands on command-line interfaces (CLIs) or proprietary graphical user interfaces (GUIs). Although these manual processes provide high flexibility for ad-hoc troubleshooting, they fail to meet the scalability and consistency requirements of modern enterprise environments. As demonstrated by Benson et al. \cite{benson2009network}, manual network management places a high cognitive burden on system administrators. This burden frequently results in configuration drift and inconsistent security policy enforcement across distributed systems.
+
+To resolve these challenges, Infrastructure-as-Code (IaC) introduced a structured, programmatic approach to resource provisioning and lifecycle management. The IaC paradigm is traditionally divided into two distinct execution methodologies:
+\begin{itemize}
+    \item \textbf{Imperative Paradigm:} The administrator explicitly defines the sequence of commands and API calls required to reach the desired state (e.g., employing Python scripts or Ansible playbooks). This methodology requires manual handling of execution ordering and error recovery.
+    \item \textbf{Declarative Paradigm:} The administrator defines the desired final state of the network resource (e.g., using Terraform configuration files), leaving the underlying orchestration engine to automatically compute the transition delta (state graph) and execute the required mutations. The pioneering work on site configuration engines by Burgess \cite{burgess1995site} demonstrated the effectiveness of declarative, autonomous systems in converging configurations toward stable target states.
+\end{itemize}
+
+Despite these programmatic advancements, static declarative IaC frameworks present significant limitations when deployed in live, dynamic enterprise network environments. First, they assume complete ownership over the target device state. If an administrator applies an out-of-band change directly to a security device—such as blocking a malicious IP address during an active security incident—the local state file becomes out of sync. A subsequent execution of the IaC pipeline would overwrite this emergency rule, introducing a security regression. Second, static configurations lack real-time adaptability, meaning they cannot dynamically adjust rule ordering or validate state parameters against active, live network metrics. Additionally, an empirical study of configuration scripts by Rahman and Williams \cite{rahman2018characterizing} highlighted that a significant portion of deployment failures stem from defective or untested declarative code. 
+
+\begin{table}[H]
+    \small
+    \centering
+    \renewcommand{\arraystretch}{1.4}
+    \begin{tabular}{|p{3.5cm}|p{5.5cm}|p{5.5cm}|}
+        \hline
+        \textbf{Paradigm} & \textbf{Core Benefits} & \textbf{Key Technical Limitations} \\
+        \hline
+        \textbf{Manual CLI / GUI} & High direct control, no initial software dependencies. & High human error rate \cite{oppenheimer2003why}, lack of scalability, configuration drift. \\
+        \hline
+        \textbf{Imperative IaC} & Explicit execution paths, granular debugging capabilities. & Rigid dependency trees, high maintenance cost, limited self-healing. \\
+        \hline
+        \textbf{Declarative IaC} & High abstraction, idempotent executions, drift convergence \cite{burgess1995site}. & Rigid schema definitions, lack of run-time adaptiveness to dynamic user queries. \\
+        \hline
+    \end{tabular}
+    \caption{Comparative Matrix of Traditional Network Administration Paradigms}
+    \label{tab:admin_paradigms}
+\end{table}
+
+As summarized in Table \ref{tab:admin_paradigms}, traditional approaches present trade-offs between operational agility and configuration safety. To transcend these boundaries and address the rigidity of static code, the concept of Intent-Based Networking has emerged as a dynamic alternative.
+
+\section{Intent-Based Networking (IBN) Foundations}
+Intent-Based Networking (IBN) redefines how networks are orchestrated by replacing low-level device configurations with high-level, abstract human intentions. According to the comprehensive survey by Leivadeas and Falkner \cite{leivadeas2022survey}, an IBN system is a software platform capable of automatically translating high-level business policies into exact, concrete device configurations, while continuously verifying that the active state matches the requested intent.
+
+The structural architecture of a mature IBN system is designed around a continuous closed-loop control system composed of four sequential phases:
+\begin{enumerate}
+    \item \textbf{Translation (Ingestion):} Capturing abstract human intent and performing semantic validation against existing infrastructure objects.
+    \item \textbf{Activation (Orchestration):} Computing the target configuration, allocating resources, and executing modifications via REST APIs.
+    \item \textbf{Verification (Audit):} Analyzing real-time telemetry to ensure that the physical infrastructure state matches the intended design.
+    \item \textbf{Remediation (Correction):} Executing automated rollback or repair scripts if a state drift or compliance violation is detected.
+\end{enumerate}
+
+This persistent feedback loop ensures that the network continuously aligns with organizational security postures.
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[
+        node distance=2.2cm,
+        every node/.style={font=\sffamily\small},
+        block/.style={rectangle, draw=black, thick, fill=white, text width=2.8cm, align=center, minimum height=1.1cm, rounded corners},
+        arrow/.style={->, thick, draw=black, >=stealth},
+        badge/.style={fill=white, font=\sffamily\scriptsize\bfseries, inner sep=2pt}
+        ]
+        
+        % Symmetrical Loop Nodes (Coordinates defined explicitly to prevent overlapping)
+        \node[block] (trans) at (0, 0) {Translation\\(NLU Grounding)};
+        \node[block] (act) at (4.5, 0) {Activation\\(API Orchestration)};
+        \node[block] (verify) at (4.5, -2.5) {Verification\\(Dynamic Auditing)};
+        \node[block] (remed) at (0, -2.5) {Remediation\\(Automated Rollback)};
+        
+        % Circular Loop Arrows with text badges
+        \draw[arrow] (trans) -- node[above, pos=0.5, badge] {Target State} (act);
+        \draw[arrow] (act) -- node[right, pos=0.5, badge] {Live Sync} (verify);
+        \draw[arrow] (verify) -- node[below, pos=0.5, badge] {Drift Detect} (remed);
+        \draw[arrow] (remed) -- node[left, pos=0.5, badge] {Restore} (trans);
+        
+    \end{tikzpicture}
+    \caption{The Closed-Loop Feedback Control System of Intent-Based Networking}
+    \label{fig:ibn_closed_loop}
+\end{figure}
+
+The closed loop is illustrated in Figure \ref{fig:ibn_closed_loop}. In this project, we apply these core feedback principles to the administration of FortiGate appliances by coupling conversational NLU with a deterministic execution pipeline. However, translating high-level intent into device-level configurations requires addressing specific domain challenges unique to security appliances, which we explore in the following section.
+
+\section{Firewall Automation and FortiGate Management Challenges}
+While general cloud orchestration platforms manage resources that are largely order-independent (such as compute instances or storage buckets), firewall automation operates under much stricter constraints. Security gateways enforce access control lists (ACLs) and stateful policies, introducing several complex challenges that any automated system must address:
+\begin{itemize}
+    \item \textbf{Policy Ordering and Shadowing:} Firewall rules are processed sequentially in a top-down, first-match approach. If a broad rule is mistakenly positioned before a specific policy, it will "shadow" the specific rule, rendering it obsolete. An automated agent must ensure that rule insertion happens at the correct index to avoid creating security gaps.
+    \item \textbf{NAT and Routing Consistency:} Modifying a security policy often requires coordinating changes in Network Address Translation (NAT) rules, Virtual IPs (VIPs), and routing tables. A mismatch between these components can lead to immediate packet drops or expose internal networks.
+    \item \textbf{Configuration Drift:} Firewalls are critical enforcement points. During security incidents, administrators frequently apply temporary, out-of-band rules directly to the appliance CLI or GUI. These manual changes disrupt static configuration templates, making live synchronization and drift detection essential.
+    \item \textbf{Operational Criticality:} A misconfigured virtual machine affects only that specific host, whereas a misconfigured core firewall policy can disconnect an entire subnet, disrupt corporate VPN gateways, or expose sensitive database segments to the public internet.
+    \item \textbf{Verifiability and Self-Healing:} If an automated configuration push contains a logical error that blocks administrative traffic (such as disabling the management interface or blocking the REST API port), the system must detect this loss of connectivity and automatically roll back to the last known stable state.
+\end{itemize}
+
+Because of these domain-specific risks, firewall environments require stronger validation safeguards than generic cloud systems. We must therefore ensure that the translation of natural language queries is strictly controlled and verified before execution.
+
+\section{Conversational AI and LLMs in Network Automation}
+The emergence of Large Language Models (LLMs) has introduced conversational capabilities into network administration. Instead of memorizing proprietary syntax or writing complex files, administrators can declare intent using natural language. The LLM serves as a semantic translator, converting unstructured text into structured parameter payloads (typically JSON schemas).
+
+However, introducing probabilistic LLMs directly into critical control planes poses significant operational and security challenges:
+\begin{itemize}
+    \item \textbf{Probabilistic Execution Model:} Unlike traditional compilers, LLMs behave probabilistically. The same natural language input can produce syntactically different API payloads, introducing unpredictable execution behaviors. As evaluated in the NetConfEval framework by Wang et al. \cite{wang2024netconfeval}, LLMs frequently struggle to generate syntactically accurate network configs under real-world infrastructure constraints.
+    \item \textbf{Hallucination Vulnerabilities:} Probabilistic models can hallucinate invalid IP addresses, non-existent interfaces, or deprecated API arguments. These errors can cause severe outages if executed without verification.
+    \item \textbf{Lack of Real-Time Infrastructure Context:} Static language models cannot query active firewall state. This limitation can cause them to generate configurations that conflict with pre-existing security policies or shadow routing rules.
+\end{itemize}
+
+To systematically mitigate these vulnerabilities, Retrieval-Augmented Generation (RAG), pioneered by Lewis et al. \cite{lewis2020rag}, is integrated as a core architectural building block. By coupling the language model with a vector database containing indexed FortiOS REST API documentations, RAG forces the model's outputs to remain strictly grounded. Empirical studies by Shajarian et al. \cite{shajarian2024rag} confirm that RAG-enhanced architectures substantially improve log analysis, troubleshooting accuracy, and documentation query resolutions in network operations.
+
+Nonetheless, even with RAG, a language model remains a probabilistic engine. It cannot guarantee 100\% syntactic correctness or rule compliance. For this reason, conversational AI alone is insufficient for security-critical environments. A hybrid architecture is required, separating the probabilistic interpretation interface from a deterministic validator that enforces safety rules before the configuration is applied.
+
+\section{Human-in-the-Loop (HITL) and Verification}
+In high-security enterprise environments, fully autonomous execution without human verification represents a significant risk of unintended service disruption. The exhaustive analysis of major internet service failures by Oppenheimer et al. \cite{oppenheimer2003why} demonstrates that human oversight errors and blind automation are primary drivers of system outages. To ensure security, it is critical to position the administrator at the center of the decision-making cycle via an interactive Human-in-the-Loop (HITL) framework.
+
+The HITL architecture, as conceptualized by Gómez-Carmona et al. \cite{gomez2024hitl}, embeds strict, interactive validation steps. Within our proposed system, the deterministic Python control plane first validates the syntax and compliance of the JSON intent generated by the AI. If the payload is verified, the system generates a visual configuration diff and requests explicit administrative authorization before executing any changes on the physical firewall.
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[
+        node distance=2.5cm,
+        every node/.style={font=\sffamily\small},
+        stepbox/.style={rectangle, draw=black, thick, fill=white, text width=3.2cm, align=center, minimum height=1.2cm, rounded corners},
+        arrow/.style={->, thick, draw=black, >=stealth},
+        badge/.style={fill=white, font=\sffamily\scriptsize\bfseries, inner sep=2pt}
+        ]
+        
+        % Symmetrical and spacious horizontal placement
+        \node[stepbox] (nlu) at (0, 0) {Unstructured Intent\\(Probabilistic AI)};
+        \node[stepbox] (val) at (5.5, 0) {Validation \& Diff\\(Deterministic Plane)};
+        \node[stepbox] (hitl) at (11.0, 0) {HITL Portal\\(Operator Review)};
+        
+        \draw[arrow] (nlu) -- node[above, pos=0.5, badge] {JSON Payload} (val);
+        \draw[arrow] (val) -- node[above, pos=0.5, badge] {Verifiable State} (hitl);
+        
+    \end{tikzpicture}
+    \caption{Interactive Validation Pipeline incorporating Human-in-the-Loop Safeguards}
+    \label{fig:hitl_pipeline}
+\end{figure}
+
+The interactive pipeline is shown in Figure \ref{fig:hitl_pipeline}. This design separates the conversational interpretation layer from the deterministic execution layer, ensuring that all mutations remain under human control. This ensures that the administrator is the ultimate authority, reviewing changes before they affect the live network.
+
+\section{Comparative Analysis of Orchestration Models}
+To establish the architectural advantages of our hybrid model, we conducted a systematic comparative analysis of existing network management approaches.
+
+\begin{table}[H]
+    \small
+    \centering
+    \renewcommand{\arraystretch}{1.4}
+    \begin{tabular}{|p{3.0cm}|p{3.5cm}|p{4.0cm}|p{4.5cm}|}
+        \hline
+        \textbf{Feature} & \textbf{Static IaC (Terraform)} & \textbf{Pure LLM Agents} & \textbf{Our Hybrid IBN Prototype} \\
+        \hline
+        \textbf{Interface} & Code / CLI & Conversational UI & Conversational UI with grounded context. \\
+        \hline
+        \textbf{Safety Model} & Deterministic schema validation & Probabilistic (high risk of hallucinations \cite{wang2024netconfeval}) & Deterministic Python validation threshold with HITL \cite{gomez2024hitl}. \\
+        \hline
+        \textbf{State Sync} & Static statefile (prone to drift) & None (blind execution) & Active live API synchronization and pre-execution snapshots. \\
+        \hline
+        \textbf{Recovery} & Manual destroy / apply & Destructive CLI actions & Automated transaction rollback and verification. \\
+        \hline
+    \end{tabular}
+    \caption{Comparative Analysis of Network Orchestration Models}
+    \label{tab:orchestration_models}
+\end{table}
+
+As illustrated in Table \ref{tab:orchestration_models}, the proposed hybrid architecture successfully bridges the gap between the operational flexibility of conversational interfaces and the safety demands of enterprise firewalls. By leveraging strict automated code validation protocols similar to those explored by Sokolowski et al. \cite{sokolowski2024automated}, our prototype ensures that all state mutations are thoroughly validated and completely reversible.
+
+\section{Chapter Conclusion}
+In conclusion, this chapter has reviewed the evolution of network management paradigms and analyzed the systemic strengths and limitations of conversational AI. Existing research confirms that modern security orchestration platforms cannot rely solely on probabilistic language models. The integration of conversational natural language processing with a deterministic control plane provides an essential safeguard to protect infrastructure integrity.
+
+These theoretical insights establish a clear path for designing the software architecture of our platform. The next chapter (Chapter 3: System Architecture and Design) will present the global functional design, structural software components, database schemas, and the detailed data flow models of our hybrid network orchestration prototype.

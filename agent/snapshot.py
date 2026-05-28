@@ -76,15 +76,41 @@ class RollbackResult:
 #  Snapshot store (session-scoped singleton pattern)
 # ══════════════════════════════════════════════════════════════════════════════
 
+import os
+import json
+
+_SNAPSHOT_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs", "snapshots.json")
+
 class SnapshotStore:
     """
-    In-memory store for operation snapshots. One instance per AgentSession.
-
-    Thread safety: single-session, synchronous — no locking needed.
+    Persistent store for operation snapshots. One instance per AgentSession.
+    State is saved to disk to survive container/process restarts.
     """
 
     def __init__(self):
         self._snapshots: deque[OperationSnapshot] = deque(maxlen=_MAX_SNAPSHOTS)
+        self._load_from_disk()
+
+    def _load_from_disk(self) -> None:
+        if not os.path.exists(_SNAPSHOT_FILE):
+            return
+        try:
+            with open(_SNAPSHOT_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                for item in data:
+                    # Ignore corrupted entries safely
+                    if isinstance(item, dict):
+                        self._snapshots.append(OperationSnapshot(**item))
+        except Exception as exc:
+            logger.error(f'"event":"snapshot_load_failed","error":"{exc}"')
+
+    def _save_to_disk(self) -> None:
+        try:
+            os.makedirs(os.path.dirname(_SNAPSHOT_FILE), exist_ok=True)
+            with open(_SNAPSHOT_FILE, "w", encoding="utf-8") as f:
+                json.dump([s.__dict__ for s in self._snapshots], f, indent=2)
+        except Exception as exc:
+            logger.error(f'"event":"snapshot_save_failed","error":"{exc}"')
 
     def capture(
         self,
@@ -95,9 +121,7 @@ class SnapshotStore:
         rollback_fn:  str = "",
     ) -> str:
         """
-        Capture a pre-operation snapshot.
-
-        Returns the op_id string for audit logging.
+        Capture a pre-operation snapshot and persist to disk.
         """
         op_id = uuid.uuid4().hex[:8].upper()
         ts    = datetime.now(timezone.utc).isoformat()
@@ -112,6 +136,7 @@ class SnapshotStore:
             rollback_fn=rollback_fn,
         )
         self._snapshots.append(snap)
+        self._save_to_disk()
 
         logger.debug(
             f'"event":"snapshot_captured",'
@@ -137,6 +162,7 @@ class SnapshotStore:
         for snap in self._snapshots:
             if snap.op_id.upper() == op_id.upper():
                 snap.rolled_back = True
+                self._save_to_disk()
                 break
 
     def format_list(self) -> str:

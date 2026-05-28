@@ -1,5 +1,14 @@
 """
-status_bar.py — Sidebar status and metrics rendering.
+status_bar.py — Clean sidebar for FortiGate AI Agent.
+
+Sections:
+  1. Brand header
+  2. Device — connection, hostname, model, serial, uptime
+  3. Resources — CPU / MEM bars
+  4. Counts — policies, interfaces
+  5. Session — turns, pending state, last command
+  6. Quick commands — grouped by category
+  7. Footer
 """
 from __future__ import annotations
 
@@ -7,177 +16,342 @@ import streamlit as st
 from ui.utils.state import check_fortigate_connection
 
 
+# ── Quick command groups ──────────────────────────────────────────────────────
+_COMMANDS = {
+    "MONITOR": [
+        ("Policies",        "list all policies"),
+        ("Interfaces",      "show interfaces"),
+        ("Routes",          "show routes"),
+        ("VPN Status",      "show vpn status"),
+        ("Traffic Logs",    "show traffic logs"),
+        ("System Status",   "system status"),
+    ],
+    "SECURITY": [
+        ("Audit Firewall",  "analyze my firewall security"),
+        ("Backup Config",   "backup config"),
+    ],
+}
+
+
+# ── Public entry point ────────────────────────────────────────────────────────
 def render_sidebar() -> None:
-    """Render the full sidebar with connection status and system info."""
     with st.sidebar:
-        # Logo / title
-        st.markdown(
-            """
-<div style="text-align:center;padding:1rem 0 1.5rem 0">
-  <div style="font-size:1.6rem;font-weight:700;color:#58a6ff;
-  letter-spacing:-0.02em">FortiGate AI</div>
-  <div style="font-size:0.75rem;color:#8b949e;margin-top:0.2rem">
-    Intelligent Operations Platform
-  </div>
-</div>""",
-            unsafe_allow_html=True,
-        )
-
-        st.divider()
-
-        # Connection status
-        _render_connection_status()
-
-        st.divider()
-
-        # Session controls
-        st.markdown(
-            '<div style="font-size:0.75rem;font-weight:600;color:#8b949e;'
-            'text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem">'
-            'Session</div>',
-            unsafe_allow_html=True,
-        )
-
-        if st.button("🔄 New conversation", use_container_width=True):
-            _reset_session()
-
-        # Show pending state
-        if st.session_state.get("pending", False):
-            st.markdown(
-                """
-<div style="background:rgba(210,153,34,0.1);border:1px solid rgba(210,153,34,0.3);
-border-radius:6px;padding:0.5rem 0.75rem;margin:0.5rem 0;font-size:0.8rem;color:#d29922">
-  <span class="status-dot pending"></span>
-  Awaiting confirmation
-</div>""",
-                unsafe_allow_html=True,
-            )
-
-        st.divider()
-
-        # Conversation stats
-        msg_count = len(st.session_state.get("messages", []))
-        user_msgs = sum(
-            1 for m in st.session_state.get("messages", [])
-            if m["role"] == "user"
-        )
-
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Messages", msg_count)
-        with col2:
-            st.metric("Commands", user_msgs)
-
-        st.divider()
-
-        # Quick commands
-        st.markdown(
-            '<div style="font-size:0.75rem;font-weight:600;color:#8b949e;'
-            'text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem">'
-            'Quick commands</div>',
-            unsafe_allow_html=True,
-        )
-
-        _render_quick_command("📋 List all policies", "list all policies")
-        _render_quick_command("🔒 Security audit",    "analyze my firewall security")
-        _render_quick_command("📊 System status",     "system status")
-        _render_quick_command("🌐 Active sessions",   "show active sessions")
-
-        st.divider()
-
-        # Footer
-        st.markdown(
-            '<div style="text-align:center;font-size:0.7rem;color:#484f58;'
-            'padding-top:0.5rem">FortiGate AI Agent<br>'
-            'Powered by Mistral AI</div>',
-            unsafe_allow_html=True,
-        )
+        _brand()
+        _gap("1.2rem")
+        _device_panel()
+        _rule()
+        _session_panel()
+        _rule()
+        _audit_panel()
+        _rule()
+        _quick_panel()
+        _footer()
 
 
-def _render_connection_status() -> None:
+# ── Brand ─────────────────────────────────────────────────────────────────────
+def _brand() -> None:
     st.markdown(
-        '<div style="font-size:0.75rem;font-weight:600;color:#8b949e;'
-        'text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem">'
-        'Firewall</div>',
+        """
+        <div style="padding:1.4rem 1rem 0">
+          <div style="font-size:0.6rem;font-weight:500;letter-spacing:0.2em;
+                      text-transform:uppercase;color:#555555;margin-bottom:0.35rem">
+            FortiGate
+          </div>
+          <div style="font-size:1.15rem;font-weight:300;color:#dddddd;
+                      letter-spacing:-0.01em;line-height:1">
+            AI Agent
+          </div>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
+
+# ── Device / connection panel ─────────────────────────────────────────────────
+def _device_panel() -> None:
     connected = st.session_state.get("fg_connected")
     fg_info   = st.session_state.get("fg_info", {})
+    resources = st.session_state.get("fg_resources", {})
+    counts    = st.session_state.get("fg_counts", {})
+
+    hostname = fg_info.get("hostname", "—") if connected else "—"
+    model    = fg_info.get("model",    "—") if connected else "—"
+    uptime   = fg_info.get("uptime",   "—") if connected else "—"
+    serial   = fg_info.get("serial",   "—") if connected else "—"
 
     if connected is True:
-        hostname = fg_info.get("hostname", "FortiGate")
-        version  = fg_info.get("version", "")
-        st.markdown(
-            f"""
-<div style="background:#0f2a1a;border:1px solid rgba(63,185,80,0.3);
-border-radius:6px;padding:0.6rem 0.75rem;font-size:0.82rem">
-  <div><span class="status-dot connected"></span>
-  <span style="color:#3fb950;font-weight:600">Connected</span></div>
-  <div style="color:#8b949e;margin-top:0.3rem;font-size:0.78rem">
-    {hostname}<br><code style="font-size:0.72rem">{version}</code>
-  </div>
-</div>""",
-            unsafe_allow_html=True,
-        )
+        dot, dot_color, label, label_color = "●", "#ffffff", "ONLINE", "#ffffff"
     elif connected is False:
-        st.markdown(
-            """
-<div style="background:#2a0f0f;border:1px solid rgba(248,81,73,0.3);
-border-radius:6px;padding:0.6rem 0.75rem;font-size:0.82rem">
-  <span class="status-dot disconnected"></span>
-  <span style="color:#f85149;font-weight:600">Disconnected</span>
-  <div style="color:#8b949e;margin-top:0.25rem;font-size:0.76rem">
-    Check FortiGate connectivity
-  </div>
-</div>""",
-            unsafe_allow_html=True,
-        )
+        dot, dot_color, label, label_color = "●", "#444444", "OFFLINE", "#555555"
     else:
-        st.markdown(
-            """
-<div style="background:#161b22;border:1px solid #30363d;
-border-radius:6px;padding:0.6rem 0.75rem;font-size:0.82rem;color:#8b949e">
-  <span class="status-dot pending"></span>Connecting...
-</div>""",
-            unsafe_allow_html=True,
-        )
+        dot, dot_color, label, label_color = "◐", "#777777", "CONNECTING", "#777777"
 
-    # Refresh button
-    if st.button("↺ Check connection", use_container_width=True):
+    st.markdown(
+        f"""
+        <div style="padding:0 1rem">
+
+          <!-- Status row -->
+          <div style="display:flex;align-items:center;justify-content:space-between;
+                      margin-bottom:1rem">
+            <span style="font-size:0.6rem;font-weight:500;letter-spacing:0.14em;
+                         text-transform:uppercase;color:#666666">Device</span>
+            <span style="font-size:0.68rem;font-weight:500;letter-spacing:0.1em;
+                         color:{label_color}">
+              <span style="font-size:0.45rem;color:{dot_color};margin-right:0.3rem">{dot}</span>
+              {label}
+            </span>
+          </div>
+
+          <!-- Device info grid -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.7rem 0.5rem">
+            {_info_cell("HOST", hostname)}
+            {_info_cell("MODEL", model)}
+            {_info_cell("SERIAL", serial, mono=True)}
+            {_info_cell("UPTIME", uptime)}
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Resource bars
+    cpu = resources.get("cpu", 0) if connected else 0
+    mem = resources.get("memory", 0) if connected else 0
+
+    _gap("0.8rem")
+    st.markdown('<div style="padding:0 1rem">', unsafe_allow_html=True)
+    _bar("CPU", cpu)
+    _bar("MEM", mem)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # Policy / interface counts
+    pc = counts.get("policies", 0) if connected else 0
+    ic = counts.get("interfaces", 0) if connected else 0
+
+    st.markdown(
+        f"""
+        <div style="display:flex;gap:1.5rem;padding:0.8rem 1rem 0.2rem">
+          {_stat_block(str(pc), "Policies")}
+          {_stat_block(str(ic), "Interfaces")}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    _gap("0.5rem")
+    st.markdown('<div style="padding:0 1rem">', unsafe_allow_html=True)
+    if st.button("↻  Refresh", use_container_width=True, key="btn_refresh_conn"):
         check_fortigate_connection()
         st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
-def _render_quick_command(label: str, command: str) -> None:
-    """Render a clickable quick-command button."""
-    if st.button(label, use_container_width=True):
-        from ui.utils.state import get_agent, push_message
-        from core import ResponseKind
+def _info_cell(label: str, value: str, mono: bool = False) -> str:
+    font = "font-family:JetBrains Mono,monospace;" if mono else ""
+    return (
+        f'<div>'
+        f'<div style="font-size:0.58rem;letter-spacing:0.1em;color:#555555;'
+        f'text-transform:uppercase;margin-bottom:0.2rem">{label}</div>'
+        f'<div style="font-size:0.78rem;color:#cccccc;{font}font-weight:300;'
+        f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{value}</div>'
+        f'</div>'
+    )
 
-        push_message("user", command)
-        agent    = get_agent()
-        response = agent.process(command)
 
-        push_message(
-            role="agent",
-            content=response.text,
-            kind=response.kind.value,
+def _stat_block(value: str, label: str) -> str:
+    return (
+        f'<div>'
+        f'<div style="font-size:1.1rem;font-weight:300;color:#dddddd;line-height:1">{value}</div>'
+        f'<div style="font-size:0.58rem;letter-spacing:0.1em;color:#555555;'
+        f'text-transform:uppercase;margin-top:0.25rem">{label}</div>'
+        f'</div>'
+    )
+
+
+def _bar(label: str, pct: int) -> None:
+    try:
+        pct = max(0, min(100, int(pct)))
+    except (TypeError, ValueError):
+        return
+    bar_color = "#ffffff" if pct > 80 else "#aaaaaa" if pct > 55 else "#555555"
+    st.markdown(
+        f"""
+        <div style="margin-bottom:0.5rem">
+          <div style="display:flex;justify-content:space-between;
+                      font-size:0.62rem;color:#666666;margin-bottom:0.2rem">
+            <span>{label}</span><span style="color:{bar_color}">{pct}%</span>
+          </div>
+          <div style="height:2px;background:#1e1e1e">
+            <div style="width:{pct}%;height:100%;background:{bar_color}"></div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# ── Session panel ─────────────────────────────────────────────────────────────
+def _session_panel() -> None:
+    msgs       = st.session_state.get("messages", [])
+    user_count = sum(1 for m in msgs if m["role"] == "user")
+    pending    = st.session_state.get("pending", False)
+    last_act   = st.session_state.get("last_action", "")
+
+    try:
+        from snapshot import SnapshotStore
+        snapshot_count = len(SnapshotStore()._snapshots)
+    except Exception:
+        snapshot_count = 0
+
+    st.markdown(
+        f"""
+        <div style="padding:0 1rem">
+          <div style="font-size:0.6rem;font-weight:500;letter-spacing:0.14em;
+                      text-transform:uppercase;color:#666666;margin-bottom:0.8rem">
+            Session
+          </div>
+          <div style="display:flex;gap:1.5rem;margin-bottom:0.6rem">
+            {_stat_block(str(user_count), "Commands")}
+            {_stat_block(str(len(msgs)),  "Messages")}
+            {_stat_block(str(snapshot_count), "Snapshots")}
+          </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if last_act:
+        st.markdown(
+            f'<div style="font-size:0.72rem;color:#555555;margin-bottom:0.4rem;'
+            f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
+            f'<span style="color:#444">↳ </span>{last_act}</div>',
+            unsafe_allow_html=True,
         )
 
-        if response.kind == ResponseKind.CONFIRMATION:
-            st.session_state.pending      = True
-            st.session_state.pending_text = response.text
+    if pending:
+        st.markdown(
+            '<div style="font-size:0.72rem;color:#eeeeee;border:1px solid #333333;'
+            'padding:0.35rem 0.6rem;letter-spacing:0.04em;margin-bottom:0.4rem">'
+            '⬡  Awaiting confirmation</div>',
+            unsafe_allow_html=True,
+        )
 
-        st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    _gap("0.4rem")
+    st.markdown('<div style="padding:0 1rem">', unsafe_allow_html=True)
+    if st.button("New conversation", use_container_width=True, key="btn_new_conv"):
+        _reset()
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
-def _reset_session() -> None:
-    from ui.utils.state import get_agent
-    # Recreate agent
+# ── Audit panel ───────────────────────────────────────────────────────────────
+def _audit_panel() -> None:
+    try:
+        from audit.logger import read_logs
+    except ImportError:
+        return
+
+    st.markdown(
+        '<div style="padding:0 1rem;font-size:0.6rem;font-weight:500;'
+        'letter-spacing:0.14em;text-transform:uppercase;color:#666666;'
+        'margin-bottom:0.5rem">Recent Audit Chain</div>',
+        unsafe_allow_html=True,
+    )
+    
+    logs = read_logs(limit=20)
+    action_logs = [l for l in logs if l.get("type") == "action"]
+    recent_actions = action_logs[-3:]
+    
+    if not recent_actions:
+        st.markdown('<div style="padding:0 1rem;font-size:0.75rem;color:#555">No entries</div>', unsafe_allow_html=True)
+        return
+        
+    for entry in reversed(recent_actions):
+        ts = entry.get("timestamp", "")[:19].replace("T", " ")
+        action = entry.get("action", "UNKNOWN").replace("TOOL_", "").replace("_", " ")
+        
+        st.markdown(
+            f'<div style="padding:0.4rem 0.8rem; border-left: 2px solid #333333; margin-bottom: 0.5rem; background: #0a0a0a;">'
+            f'<div style="font-size:0.6rem; color:#777777; font-family:\'JetBrains Mono\',monospace; margin-bottom:0.2rem;">{ts}</div>'
+            f'<div style="font-size:0.75rem; color:#eeeeee; font-weight:600; letter-spacing:0.02em;">{action}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    _gap("0.6rem")
+
+
+# ── Quick commands panel ──────────────────────────────────────────────────────
+def _quick_panel() -> None:
+    for group_label, commands in _COMMANDS.items():
+        st.markdown(
+            f'<div style="padding:0 1rem;font-size:0.6rem;font-weight:500;'
+            f'letter-spacing:0.14em;text-transform:uppercase;color:#666666;'
+            f'margin-bottom:0.5rem">{group_label}</div>',
+            unsafe_allow_html=True,
+        )
+        for label, command in commands:
+            if st.button(label, use_container_width=True, key=f"qc_{label}"):
+                _run(command)
+        _gap("0.6rem")
+
+
+# ── Footer ────────────────────────────────────────────────────────────────────
+def _footer() -> None:
+    st.markdown(
+        '<div style="padding:1rem 1rem 0.5rem;font-size:0.62rem;color:#555555;'
+        'letter-spacing:0.06em">Mistral AI · Safety Engine</div>',
+        unsafe_allow_html=True,
+    )
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+def _rule() -> None:
+    st.markdown(
+        '<div style="border-top:1px solid #222222;margin:0.9rem 0"></div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _gap(size: str) -> None:
+    st.markdown(
+        f'<div style="height:{size}"></div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _section_label(text: str) -> None:
+    st.markdown(
+        f'<div style="padding:0 1rem;font-size:0.6rem;font-weight:500;'
+        f'letter-spacing:0.14em;text-transform:uppercase;color:#444444;'
+        f'margin-bottom:0.5rem">{text}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+# ── Actions ───────────────────────────────────────────────────────────────────
+def _run(command: str) -> None:
+    from ui.utils.state import get_agent, push_message
+    from core import ResponseKind
+
+    push_message("user", command)
+    response = get_agent().process(command)
+    push_message(role="agent", content=response.text, kind=response.kind.value)
+
+    if response.kind == ResponseKind.CONFIRMATION:
+        st.session_state.pending      = True
+        st.session_state.pending_text = response.text
+    else:
+        st.session_state.pending = False
+    st.rerun()
+
+
+def _reset() -> None:
     from core import AgentSession
-    st.session_state.agent    = AgentSession()
-    st.session_state.messages = []
-    st.session_state.pending  = False
+
+    st.session_state.agent        = AgentSession()
+    st.session_state.messages     = []
+    st.session_state.pending      = False
     st.session_state.pending_text = ""
+    st.session_state.last_action  = ""
+    st.session_state.input_key    = st.session_state.get("input_key", 0) + 1
     st.rerun()

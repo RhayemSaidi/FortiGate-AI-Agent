@@ -13,12 +13,14 @@ Key design decisions:
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
 import sys
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
+
 
 # ── Path setup ────────────────────────────────────────────────────────────────
 _AGENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -211,6 +213,11 @@ def ground(schema: RawIntentSchema) -> GroundedIntentSchema:
             result.issues   = []
             return result
 
+        elif intent == NLUIntentType.REBOOT_SYSTEM:
+            result.is_valid = True
+            result.issues   = []
+            return result
+
         elif intent in (NLUIntentType.AMBIGUOUS, NLUIntentType.INCOMPLETE):
             result.is_valid = False
             result.issues   = [GroundingIssue(
@@ -264,7 +271,8 @@ def ground_multi(schema: RawIntentSchema) -> MultiPolicyGroundingResult:
     allowed_intents = (
         NLUIntentType.UPDATE_POLICY,
         NLUIntentType.ENABLE_POLICY,
-        NLUIntentType.DISABLE_POLICY
+        NLUIntentType.DISABLE_POLICY,
+        NLUIntentType.DELETE_POLICY,
     )
     if schema.intent not in allowed_intents:
         result.issues.append(GroundingIssue(
@@ -304,6 +312,96 @@ def ground_multi(schema: RawIntentSchema) -> MultiPolicyGroundingResult:
                 message=f"Could not resolve policy names: {exc}",
             ))
 
+    if not target_ids and schema.policy_filter:
+        # ── Deterministic filter resolution ───────────────────────────────
+        # The LLM expressed a filter condition (e.g. service not_contains SSH).
+        # Python evaluates it against live FortiGate data — never the LLM.
+        pf     = schema.policy_filter
+        field  = pf.get("field", "")
+        op     = pf.get("op", "")
+        value  = str(pf.get("value", "")).upper().strip()
+
+        _SUPPORTED = {"service", "action", "status", "nat", "logtraffic"}
+        if field not in _SUPPORTED or op not in ("contains", "not_contains", "eq", "neq"):
+            result.issues.append(GroundingIssue(
+                field="policy_filter", kind="invalid_value",
+                message=(
+                    f"Unsupported filter: field='{field}', op='{op}'. "
+                    f"Supported fields: {', '.join(sorted(_SUPPORTED))}. "
+                    f"Supported ops: contains, not_contains, eq, neq."
+                ),
+            ))
+            return result
+
+        try:
+            from modules.policies import list_policies
+            r       = list_policies()
+            all_pols = r if isinstance(r, list) else r.get("results", [])
+        except Exception as exc:
+            result.issues.append(GroundingIssue(
+                field="policy_filter", kind="api_unavailable",
+                message=f"Could not fetch policies for filter evaluation: {exc}",
+            ))
+            return result
+
+        def _policy_matches(policy: dict) -> bool:
+            if field == "service":
+                # Build the literal service name set from FortiGate policy data.
+                svc_names = {
+                    s.get("name", "").upper()
+                    for s in (policy.get("service") or [])
+                }
+                # FortiGate's built-in "ALL" service group is a wildcard that
+                # covers every protocol and port (including SSH, HTTP, FTP, …).
+                # A policy using "ALL" implicitly has every specific service,
+                # so it must NOT be treated as "not having SSH" (or any other
+                # specific service).  The only exception: when the user is
+                # explicitly filtering for/against the literal "ALL" service.
+                has_all_wildcard = "ALL" in svc_names and value != "ALL"
+                if op == "contains":
+                    # Match if the service is explicitly listed OR if ALL is
+                    # present (which covers every service implicitly).
+                    return value in svc_names or has_all_wildcard
+                if op == "not_contains":
+                    # A policy with ALL wildcard implicitly DOES contain every
+                    # service, so it must NOT match a not_contains filter.
+                    return value not in svc_names and not has_all_wildcard
+            else:
+                # scalar fields: action, status, nat, logtraffic
+                actual = str(policy.get(field, "")).lower()
+                target = value.lower()
+                if op == "eq":
+                    return actual == target
+                if op == "neq":
+                    return actual != target
+            return False
+
+
+        matched = [
+            p.get("policyid")
+            for p in all_pols
+            if isinstance(p, dict) and p.get("policyid") and _policy_matches(p)
+        ]
+
+        logger.info(
+            f'"event":"policy_filter_resolved",'
+            f'"filter":{json.dumps(pf)},'
+            f'"matched_ids":{matched}'
+        )
+
+        if not matched:
+            result.issues.append(GroundingIssue(
+                field="policy_filter", kind="not_found",
+                message=(
+                    f"No policies match the condition: "
+                    f"{field} {op.replace('_', ' ')} '{value}'. "
+                    f"All {len(all_pols)} policies were checked."
+                ),
+            ))
+            return result
+
+        target_ids = matched
+
     if not target_ids:
         result.issues.append(GroundingIssue(
             field="policy_ids", kind="missing",
@@ -311,6 +409,7 @@ def ground_multi(schema: RawIntentSchema) -> MultiPolicyGroundingResult:
             hint="Example: enable nat in policy 3 and policy 4",
         ))
         return result
+
 
     # ── Ground each policy independently ──────────────────
     first_valid: Optional[GroundedIntentSchema] = None

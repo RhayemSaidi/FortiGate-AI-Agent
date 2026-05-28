@@ -1,0 +1,163 @@
+\begin{thebibliography}{10}
+\ifx \showCODEN  \undefined \def \showCODEN #1{CODEN #1}  \fi
+\ifx \showISBN   \undefined \def \showISBN  #1{ISBN #1}   \fi
+\ifx \showISSN   \undefined \def \showISSN  #1{ISSN #1}   \fi
+\ifx \showLCCN   \undefined \def \showLCCN  #1{LCCN #1}   \fi
+\ifx \showPRICE  \undefined \def \showPRICE #1{#1}        \fi
+\ifx \showURL    \undefined \def \showURL {URL }          \fi
+\ifx \path       \undefined \input path.sty               \fi
+\ifx \ifshowURL \undefined
+     \newif \ifshowURL
+     \showURLtrue
+\fi
+
+\bibitem{benson2009network}
+Theophilus Benson, Aditya Akella, and David Maltz.
+\newblock Unraveling the complexity of network management.
+\newblock In {\em Proceedings of the 6th USENIX Symposium on Networked Systems
+  Design and Implementation (NSDI '09)}, pages 335--348. USENIX Association,
+  2009.
+\newblock \ifshowURL {\showURL
+  \path|https://www.usenix.org/events/nsdi09/tech/full_papers/benson/benson.pdf|}\fi.
+\newblock Available:
+  \url{https://www.usenix.org/events/nsdi09/tech/full_papers/benson/benson.pdf}.
+
+\bibitem{oppenheimer2003why}
+David Oppenheimer, Archana Ganapathi, and David~A. Patterson.
+\newblock Why do internet services fail, and what can be done about it?
+\newblock In {\em Proceedings of the 4th USENIX Symposium on Internet
+  Technologies and Systems (USITS '03)}, pages 1--15. USENIX Association, 2003.
+\newblock \ifshowURL {\showURL
+  \path|https://www.usenix.org/legacy/events/usits03/tech/full_papers/oppenheimer/oppenheimer.pdf|}\fi.
+\newblock Available:
+  \url{https://www.usenix.org/legacy/events/usits03/tech/full_papers/oppenheimer/oppenheimer.pdf}.
+
+\bibitem{wang2024netconfeval}
+Changjie Wang, Mariano Scazzariello, Alireza Farshin, Simone Ferlin, Dejan
+  Kosti\'{c}, and Marco Chiesa.
+\newblock Netconfeval: Can llms facilitate network configuration?
+\newblock In {\em Proceedings of the 20th International Conference on emerging
+  Networking EXperiments and Technologies (CoNEXT '24)}, pages 90--104.
+  Association for Computing Machinery, 2024.
+\newblock \ifshowURL {\showURL
+  \path|https://dl.acm.org/doi/10.1145/3656296|}\fi.
+\newblock Available: \url{https://dl.acm.org/doi/10.1145/3656296}.
+
+\bibitem{mahajan2002understanding}
+Ratul Mahajan, David Wetherall, and Tom Anderson.
+\newblock Understanding bgp misconfiguration.
+\newblock In {\em Proceedings of the 2002 ACM SIGCOMM Conference}, pages 3--16.
+  Association for Computing Machinery, 2002.
+\newblock \ifshowURL {\showURL
+  \path|https://dl.acm.org/doi/10.1145/633025.633027|}\fi.
+\newblock Available: \url{https://dl.acm.org/doi/10.1145/633025.633027}.
+
+\bibitem{burgess1995site}
+Mark Burgess.
+\newblock A site configuration engine.
+\newblock {\em Computing Systems}, 8\penalty0 (3):\penalty0 309--337, 1995.
+\newblock \ifshowURL {\showURL
+  \path|https://www.usenix.org/legacy/publications/compsystems/1995/sum_burgess.pdf|}\fi.
+\newblock Available:
+  \url{https://www.usenix.org/legacy/publications/compsystems/1995/sum_burgess.pdf}.
+
+\bibitem{rahman2018characterizing}
+Akond Rahman and Laurie Williams.
+\newblock Characterizing defective configuration scripts used for continuous
+  deployment.
+\newblock In {\em Proceedings of the 2018 IEEE 11th International Conference on
+  Software Testing, Verification and Validation (ICST)}, pages 34--45. IEEE,
+  2018.
+\newblock \ifshowURL {\showURL
+  \path|https://ieeexplore.ieee.org/document/8377755|}\fi.
+\newblock Available: \url{https://ieeexplore.ieee.org/document/8377755}.
+
+\bibitem{leivadeas2022survey}
+Aris Leivadeas and Matthias Falkner.
+\newblock A survey on intent-based networking.
+\newblock {\em IEEE Communications Surveys \& Tutorials}, 24\penalty0
+  (4):\penalty0 2004--2041, 2022.
+\newblock \ifshowURL {\showURL
+  \path|https://ieeexplore.ieee.org/document/9925251|}\fi.
+\newblock Available: \url{https://ieeexplore.ieee.org/document/9925251}.
+
+\bibitem{sokolowski2024automated}
+Daniel Sokolowski, David Spielmann, and Guido Salvaneschi.
+\newblock Automated infrastructure as code program testing.
+\newblock {\em IEEE Transactions on Software Engineering}, 50\penalty0
+  (7):\penalty0 1585--1599, 2024.
+\newblock \ifshowURL {\showURL
+  \path|https://ieeexplore.ieee.org/document/10515152|}\fi.
+\newblock Available: \url{https://ieeexplore.ieee.org/document/10515152}.
+
+\bibitem{lewis2020rag}
+Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petroni, Vladimir
+  Karpukhin, Naman Goyal, Heinrich K{\"{u}}ttler, Mike Lewis, Wen-tau Yih, Tim
+  Rockt{\"{a}}schel, Sebastian Riedel, and Douwe Kiela.
+\newblock Retrieval-augmented generation for knowledge-intensive nlp tasks.
+\newblock {\em Advances in Neural Information Processing Systems (NeurIPS)},
+  33:\penalty0 9459--9474, 2020.
+\newblock \ifshowURL {\showURL
+  \path|https://proceedings.neurips.cc/paper/2020/hash/6b493230205f780e1bc26945df7481e5-Abstract.html|}\fi.
+\newblock Available:
+  \url{https://proceedings.neurips.cc/paper/2020/hash/6b493230205f780e1bc26945df7481e5-Abstract.html}.
+
+\bibitem{shajarian2024rag}
+Shaghayegh Shajarian, Sajad Khorsandroo, and Mahmoud Abdelsalam.
+\newblock Poster: Intelligent network management: Rag-enhanced llms for log
+  analysis, troubleshooting, and documentation.
+\newblock In {\em Proceedings of the 20th International Conference on emerging
+  Networking EXperiments and Technologies (CoNEXT '24)}, pages 489--490.
+  Association for Computing Machinery, 2024.
+\newblock \ifshowURL {\showURL
+  \path|https://dl.acm.org/doi/10.1145/3680121.3699887|}\fi.
+\newblock Available: \url{https://dl.acm.org/doi/10.1145/3680121.3699887}.
+
+\bibitem{gomez2024hitl}
+Oihane G{\'{o}}mez-Carmona, Diego Casado-Mansilla, and Diego L{\'{o}}pez-de
+  Ipi{\~{n}}a.
+\newblock Human-in-the-loop machine learning: Reconceptualizing the role of the
+  user in interactive approaches.
+\newblock {\em Internet of Things}, 25:\penalty0 101048, 2024.
+\newblock \ifshowURL {\showURL
+  \path|https://www.sciencedirect.com/science/article/pii/S254266052300262X|}\fi.
+\newblock Available:
+  \url{https://www.sciencedirect.com/science/article/pii/S254266052300262X}.
+
+\bibitem{rfc9315}
+Alexander Clemm, Laurent Ciavaglia, Lisandro~Zambenedetti Granville, and Jeff
+  Tantsura.
+\newblock Intent-based networking - concepts and definitions.
+\newblock RFC 9315, 2022.
+\newblock \ifshowURL {\showURL
+  \path|https://www.rfc-editor.org/info/rfc9315|}\fi.
+\newblock Available: \url{https://www.rfc-editor.org/info/rfc9315}.
+
+\bibitem{alshaer2004discovery}
+Ehab~S. Al-Shaer and Hazem~H. Hamed.
+\newblock Discovery of policy anomalies in distributed firewalls.
+\newblock In {\em IEEE INFOCOM 2004 - Conference on Computer Communications -
+  Twenty-Third Annual Joint Conference of the IEEE Computer and Communications
+  Societies}, volume~4, pages 2605--2616. IEEE, 2004.
+\newblock \ifshowURL {\showURL
+  \path|https://ieeexplore.ieee.org/document/1354680|}\fi.
+\newblock Available: \url{https://ieeexplore.ieee.org/document/1354680}.
+
+\bibitem{yuan2006fireman}
+Lihua Yuan, Hao Chen, Jianning Mai, Chen-Nee Chuah, Zhendong Su, Prasant
+  Mohapatra, and Carter Davis.
+\newblock Fireman: A toolkit for firewall modeling and analysis.
+\newblock {\em IEEE Symposium on Security and Privacy}, pages 199--213, 2006.
+\newblock \ifshowURL {\showURL
+  \path|https://ieeexplore.ieee.org/document/1630283|}\fi.
+\newblock Available: \url{https://ieeexplore.ieee.org/document/1630283}.
+
+\bibitem{navarro2001guided}
+Gonzalo Navarro.
+\newblock A guided tour to approximate string matching.
+\newblock {\em ACM Computing Surveys}, 33\penalty0 (1):\penalty0 31--88, 2001.
+\newblock \ifshowURL {\showURL
+  \path|https://dl.acm.org/doi/10.1145/375360.375365|}\fi.
+\newblock Available: \url{https://dl.acm.org/doi/10.1145/375360.375365}.
+
+\end{thebibliography}

@@ -1,0 +1,4 @@
+\babel@toc {english}{}\relax 
+\contentsline {chapter}{\numberline {1}First Chapter}{2}{}%
+\contentsline {section}{\numberline {\filterminitoc {1.}1}First Section}{2}{}%
+\contentsline {chapter}{\numberline {2}Second Chapter}{3}{}%

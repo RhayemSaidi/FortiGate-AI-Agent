@@ -1,316 +1,371 @@
 """
-theme.py — CSS constants and the injected stylesheet.
-Everything the agent UI needs to look like a modern SOC platform.
+theme.py — Minimal monochrome dark theme.
+Philosophy: flat, calm, readable. No gradients, no glows, no JS hacks.
 """
 
 DARK_CSS = """
 <style>
-/* ── Google Font ───────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&family=JetBrains+Mono:wght@300;400&display=swap');
 
-/* ── Global reset ──────────────────────────────────────── */
+/* ── Reset & base ─────────────────────────────── */
 html, body, [class*="css"] {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
 }
 
-/* ── App background ────────────────────────────────────── */
 .stApp {
-    background: #0d1117;
-    color: #e6edf3;
+    background: #080808;
+    color: #eeeeee;
 }
 
-/* ── Sidebar ───────────────────────────────────────────── */
+/* ── Sidebar ─────────────────────────────────── */
+/* Force Streamlit header icons to be white so they are visible on black background */
+[data-testid="collapsedControl"] svg,
+[data-testid="stHeader"] svg {
+    fill: #ffffff !important;
+    color: #ffffff !important;
+}
+
+[data-testid="collapsedControl"]:hover svg,
+[data-testid="stHeader"] button:hover svg {
+    fill: #aaaaaa !important;
+    color: #aaaaaa !important;
+}
+
 [data-testid="stSidebar"] {
-    background: #161b22;
-    border-right: 1px solid #30363d;
+    background-color: #0a0a0a !important;
+    border-right: 1px solid #1a1a1a !important;
 }
 
-[data-testid="stSidebar"] .stMarkdown h1,
-[data-testid="stSidebar"] .stMarkdown h2,
-[data-testid="stSidebar"] .stMarkdown h3 {
-    color: #58a6ff;
+/* ── Sidebar: primary action buttons */
+[data-testid="stSidebar"] .stButton > button {
+    background: transparent !important;
+    border: 1px solid #2a2a2a !important;
+    color: #888888 !important;
+    border-radius: 2px !important;
+    font-size: 0.75rem !important;
+    font-weight: 400 !important;
+    letter-spacing: 0.03em !important;
+    padding: 0.45rem 0.8rem !important;
+    text-align: left !important;
+    width: 100% !important;
+    transition: border-color 0.15s ease, color 0.15s ease !important;
 }
 
-/* ── Hide default Streamlit branding ───────────────────── */
-#MainMenu { visibility: hidden; }
-footer     { visibility: hidden; }
-header     { visibility: hidden; }
-
-/* ── Chat container ────────────────────────────────────── */
-.chat-container {
-    max-width: 860px;
-    margin: 0 auto;
-    padding: 0 1rem 6rem 1rem;
+[data-testid="stSidebar"] .stButton > button:hover {
+    border-color: #cccccc !important;
+    color: #eeeeee !important;
+    background: #111111 !important;
 }
 
-/* ── Message bubbles ───────────────────────────────────── */
+/* ── Sidebar: quick command buttons */
+[data-testid="stSidebar"] .stButton > button p {
+    font-size: 0.75rem !important;
+}
+
+[data-testid="stSidebar"] hr {
+    border-color: #1a1a1a !important;
+    margin: 0.8rem 0 !important;
+}
+
+/* ── Fix Streamlit bottom bar & structural containers ─────── */
+[data-testid="stBottom"],
+[data-testid="stBottom"] > div,
+[data-testid="stBottomBlockContainer"],
+[data-testid="stAppViewBlockContainer"],
+[data-testid="stHeader"],
+[data-testid="stVerticalBlock"],
+[data-testid="stChatInputContainer"] {
+    background: transparent !important;
+    background-color: transparent !important;
+}
+
+[data-testid="stBottom"] {
+    border-top: 1px solid #1a1a1a !important;
+}
+
+/* Fallback: any sticky-positioned div should also match */
+div[style*="position: sticky"],
+div[style*="position:sticky"],
+div[style*="position: fixed"],
+div[style*="position:fixed"] {
+    background-color: transparent !important;
+}
+
+/* ── Chat messages ────────────────────────────── */
 .msg-user {
     display: flex;
     justify-content: flex-end;
-    margin: 0.75rem 0;
-    animation: fadeIn 0.2s ease;
+    margin: 1.5rem 0;
 }
 
 .msg-user .bubble {
-    background: #1f6feb;
-    color: #ffffff;
-    border-radius: 18px 18px 4px 18px;
-    padding: 0.65rem 1rem;
-    max-width: 72%;
-    font-size: 0.92rem;
-    line-height: 1.55;
+    background: #ffffff;
+    color: #000000;
+    border-radius: 4px;
+    padding: 0.8rem 1.2rem;
+    max-width: 70%;
+    font-size: 0.95rem;
+    line-height: 1.5;
     word-break: break-word;
+    font-weight: 500;
 }
 
 .msg-agent {
     display: flex;
-    justify-content: flex-start;
     align-items: flex-start;
-    gap: 0.6rem;
-    margin: 0.75rem 0;
-    animation: fadeIn 0.2s ease;
+    gap: 1rem;
+    margin: 1.5rem 0;
 }
 
-.msg-agent .avatar {
-    width: 32px;
-    height: 32px;
-    min-width: 32px;
-    background: linear-gradient(135deg, #1f6feb 0%, #58a6ff 100%);
-    border-radius: 50%;
+.agent-icon {
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
+    background: #000000;
+    border: 1px solid #333333;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.8rem;
-    font-weight: 700;
-    color: white;
-    margin-top: 2px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: #ffffff;
+    margin-top: 4px;
+    flex-shrink: 0;
 }
 
 .msg-agent .bubble {
-    background: #161b22;
-    border: 1px solid #30363d;
-    color: #e6edf3;
-    border-radius: 4px 18px 18px 18px;
-    padding: 0.75rem 1rem;
-    max-width: 82%;
-    font-size: 0.92rem;
+    background: transparent;
+    color: #dddddd;
+    padding: 0.2rem 0;
+    max-width: 85%;
+    font-size: 0.95rem;
     line-height: 1.6;
     word-break: break-word;
+    font-weight: 300;
 }
 
-/* ── Tables inside bubbles ─────────────────────────────── */
-.msg-agent .bubble table {
+/* ── Fix Streamlit Input ───────────────────────── */
+[data-testid="stChatInput"] {
+    background-color: #0d0d0d !important;
+    border: 1px solid #333333 !important;
+    border-radius: 4px !important;
+}
+[data-testid="stChatInput"]:focus-within {
+    border-color: #ffffff !important;
+}
+[data-testid="stChatInput"] textarea {
+    color: #ffffff !important;
+    background-color: transparent !important;
+    font-weight: 400 !important;
+}
+
+/* ── Fix Streamlit bottom bar (grey block under input) ── */
+[data-testid="stBottom"] {
+    background: #080808 !important;
+    border-top: 1px solid #1a1a1a !important;
+    padding-top: 0.5rem !important;
+}
+
+[data-testid="stBottom"] > div {
+    background: #080808 !important;
+}
+
+[data-testid="stChatInputContainer"] {
+    background: #080808 !important;
+    padding: 0.25rem 0 !important;
+}
+
+.stChatInput {
+    background: #080808 !important;
+}
+
+/* Remove any Streamlit default white/grey backgrounds */
+[data-testid="stAppViewContainer"] {
+    background: #080808 !important;
+}
+
+[data-testid="stVerticalBlock"] {
+    background: transparent !important;
+}
+
+/* ── Monospace output block ───────────────────── */
+.mono-out {
+    background: #0a0a0a;
+    border: 1px solid #222222;
+    padding: 0.8rem 1rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    color: #cccccc;
+    line-height: 1.6;
+    overflow-x: auto;
+    white-space: pre;
+    margin: 0.5rem 0;
+}
+
+/* ── Policy table ─────────────────────────────── */
+.policy-table {
     width: 100%;
     border-collapse: collapse;
-    margin: 0.6rem 0;
-    font-size: 0.84rem;
     font-family: 'JetBrains Mono', monospace;
-}
-
-.msg-agent .bubble table th {
-    background: #21262d;
-    color: #58a6ff;
-    padding: 0.4rem 0.75rem;
-    text-align: left;
-    border-bottom: 1px solid #30363d;
-    font-weight: 600;
-    font-size: 0.78rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-}
-
-.msg-agent .bubble table td {
-    padding: 0.35rem 0.75rem;
-    border-bottom: 1px solid #21262d;
-    color: #c9d1d9;
-}
-
-.msg-agent .bubble table tr:hover td {
-    background: #1c2128;
-}
-
-/* ── Confirmation card ─────────────────────────────────── */
-.confirm-card {
-    background: #161b22;
-    border: 1px solid #30363d;
-    border-left: 4px solid #d29922;
-    border-radius: 8px;
-    padding: 1.25rem 1.5rem;
+    font-size: 0.8rem;
     margin: 0.5rem 0;
-    max-width: 640px;
+    border: 1px solid #222222;
+}
+
+.policy-table th {
+    background: #0a0a0a;
+    color: #ffffff;
+    padding: 0.5rem 0.8rem;
+    text-align: left;
+    border-bottom: 1px solid #333333;
+    font-weight: 400;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.policy-table td {
+    padding: 0.5rem 0.8rem;
+    border-bottom: 1px solid #1a1a1a;
+    color: #bbbbbb;
+    font-weight: 300;
+}
+
+.policy-table tr:hover td { background: #111111; color: #ffffff; }
+
+.c-accept  { color: #ffffff; font-weight: 500; }
+.c-deny    { color: #777777; text-decoration: line-through; }
+.c-enabled { color: #ffffff; }
+.c-disabled{ color: #555555; }
+
+/* ── Confirmation card ────────────────────────── */
+.confirm-card {
+    background: #080808;
+    border: 1px solid #333333;
+    padding: 1rem 1.2rem;
+    max-width: 560px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    color: #dddddd;
+    line-height: 1.6;
 }
 
 .confirm-card.danger {
-    border-left-color: #f85149;
+    border-color: #ffffff;
 }
 
-.confirm-card .confirm-title {
-    font-size: 0.78rem;
-    font-weight: 600;
+.confirm-label {
+    font-size: 0.7rem;
+    font-weight: 500;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #d29922;
-    margin-bottom: 0.5rem;
+    letter-spacing: 0.1em;
+    color: #ffffff;
+    margin-bottom: 0.8rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid #222222;
 }
 
-.confirm-card.danger .confirm-title {
-    color: #f85149;
-}
-
-.confirm-card .confirm-body {
-    font-size: 0.88rem;
-    color: #c9d1d9;
-    line-height: 1.65;
-    font-family: 'JetBrains Mono', monospace;
-}
-
-/* ── Security findings ─────────────────────────────────── */
-.finding-card {
-    background: #161b22;
-    border: 1px solid #30363d;
-    border-radius: 8px;
-    padding: 1rem 1.25rem;
-    margin: 0.5rem 0;
-}
-
-.finding-card.critical { border-left: 4px solid #f85149; }
-.finding-card.high     { border-left: 4px solid #e3b341; }
-.finding-card.medium   { border-left: 4px solid #d29922; }
-.finding-card.low      { border-left: 4px solid #3fb950; }
-.finding-card.info     { border-left: 4px solid #58a6ff; }
-
-.severity-badge {
+/* ── Inline status tags ───────────────────────── */
+.tag {
     display: inline-block;
     padding: 0.15rem 0.5rem;
-    border-radius: 12px;
     font-size: 0.7rem;
-    font-weight: 700;
+    font-weight: 400;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
-    margin-bottom: 0.4rem;
+    letter-spacing: 0.08em;
+    border: 1px solid;
+    background: #000000;
 }
 
-.severity-badge.critical { background: rgba(248,81,73,0.2);  color: #f85149; }
-.severity-badge.high     { background: rgba(227,179,65,0.2); color: #e3b341; }
-.severity-badge.medium   { background: rgba(210,153,34,0.2); color: #d29922; }
-.severity-badge.low      { background: rgba(63,185,80,0.2);  color: #3fb950; }
-.severity-badge.info     { background: rgba(88,166,255,0.2); color: #58a6ff; }
+.tag.ok   { border-color: #ffffff; color: #ffffff; }
+.tag.err  { border-color: #777777; color: #dddddd; background: #1a1a1a; }
+.tag.warn { border-color: #555555; color: #cccccc; }
+.tag.info { border-color: #333333; color: #aaaaaa; }
 
-/* ── Status indicators ─────────────────────────────────── */
-.status-dot {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    margin-right: 6px;
-    vertical-align: middle;
+/* ── Notice strip ─────────────────────────────── */
+.notice {
+    font-size: 0.85rem;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid #222222;
+    background: #0a0a0a;
+    color: #cccccc;
+    margin: 0.5rem 0;
+    line-height: 1.5;
+    font-weight: 300;
 }
 
-.status-dot.connected    { background: #3fb950; box-shadow: 0 0 6px #3fb950; }
-.status-dot.disconnected { background: #f85149; }
-.status-dot.pending      { background: #d29922; animation: pulse 1.2s infinite; }
-
-/* ── Verified / error badges ───────────────────────────── */
-.badge-verified { color: #3fb950; font-size: 0.82rem; font-weight: 600; }
-.badge-failed   { color: #f85149; font-size: 0.82rem; font-weight: 600; }
-.badge-warning  { color: #d29922; font-size: 0.82rem; font-weight: 600; }
-
-/* ── Input area ────────────────────────────────────────── */
-.stChatInput > div {
-    background: #161b22 !important;
-    border: 1px solid #30363d !important;
-    border-radius: 12px !important;
-}
-
-.stChatInput textarea {
-    color: #e6edf3 !important;
-    font-family: 'Inter', sans-serif !important;
-    font-size: 0.92rem !important;
-}
-
-/* ── Buttons ───────────────────────────────────────────── */
+/* ── Buttons ──────────────────────────────────── */
 .stButton > button {
-    border-radius: 8px;
-    font-family: 'Inter', sans-serif;
-    font-weight: 500;
-    font-size: 0.88rem;
-    transition: all 0.15s ease;
-    border: none;
+    border-radius: 2px !important;
+    font-family: 'Inter', sans-serif !important;
+    font-weight: 400 !important;
+    font-size: 0.85rem !important;
+    transition: all 0.2s ease !important;
 }
 
-.btn-confirm > button {
-    background: #1f6feb !important;
+.btn-ok .stButton > button {
+    background: #ffffff !important;
+    border: 1px solid #ffffff !important;
+    color: #000000 !important;
+    padding: 0.5rem 1.2rem !important;
+}
+.btn-ok .stButton > button:hover {
+    background: #dddddd !important;
+    border-color: #dddddd !important;
+}
+
+.btn-cancel .stButton > button {
+    background: transparent !important;
+    border: 1px solid #555555 !important;
+    color: #cccccc !important;
+    padding: 0.5rem 1.2rem !important;
+}
+.btn-cancel .stButton > button:hover {
+    border-color: #ffffff !important;
     color: #ffffff !important;
-    padding: 0.5rem 1.5rem !important;
 }
 
-.btn-confirm > button:hover {
-    background: #388bfd !important;
+.btn-danger .stButton > button {
+    background: transparent !important;
+    border: 1px solid #ffffff !important;
+    color: #ffffff !important;
+    padding: 0.5rem 1.2rem !important;
+}
+.btn-danger .stButton > button:hover {
+    background: #ffffff !important;
+    color: #000000 !important;
 }
 
-.btn-cancel > button {
-    background: #21262d !important;
-    color: #8b949e !important;
-    border: 1px solid #30363d !important;
-}
-
-.btn-cancel > button:hover {
-    background: #30363d !important;
-    color: #e6edf3 !important;
-}
-
-.btn-danger > button {
-    background: rgba(248,81,73,0.15) !important;
-    color: #f85149 !important;
-    border: 1px solid rgba(248,81,73,0.4) !important;
-}
-
-/* ── Dividers ──────────────────────────────────────────── */
-hr {
-    border-color: #21262d !important;
-    margin: 0.75rem 0 !important;
-}
-
-/* ── Code blocks ───────────────────────────────────────── */
-code, pre {
+/* ── Inline code ──────────────────────────────── */
+code {
     font-family: 'JetBrains Mono', monospace !important;
-    background: #0d1117 !important;
-    color: #79c0ff !important;
-    border: 1px solid #21262d !important;
-    border-radius: 6px !important;
-    font-size: 0.82rem !important;
+    background: #111111 !important;
+    color: #ffffff !important;
+    border: 1px solid #333333 !important;
+    border-radius: 2px !important;
+    padding: 0.15em 0.4em !important;
+    font-size: 0.85em !important;
 }
 
-/* ── Scrollbar ─────────────────────────────────────────── */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: #0d1117; }
-::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #484f58; }
+/* ── Scrollbar ────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #333333; }
 
-/* ── Animations ────────────────────────────────────────── */
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(6px); }
-    to   { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50%       { opacity: 0.4; }
-}
-
-/* ── Metric cards ──────────────────────────────────────── */
+/* ── Metrics ──────────────────────────────────── */
 [data-testid="metric-container"] {
-    background: #161b22;
-    border: 1px solid #30363d;
-    border-radius: 8px;
-    padding: 0.75rem 1rem;
+    background: #0a0a0a !important;
+    border: 1px solid #222222 !important;
+    padding: 0.8rem 1rem !important;
 }
+[data-testid="stMetricValue"] { color: #ffffff !important; font-size: 1.2rem !important; font-weight: 400 !important; }
+[data-testid="stMetricLabel"] { color: #888888 !important; font-size: 0.75rem !important; font-weight: 300 !important; text-transform: uppercase; letter-spacing: 0.05em; }
 
-/* ── Expanders ─────────────────────────────────────────── */
-[data-testid="stExpander"] {
-    background: #161b22;
-    border: 1px solid #30363d;
-    border-radius: 8px;
-}
+/* ── Thinking dots ────────────────────────────── */
+@keyframes blink { 0%,100%{opacity:0.2} 50%{opacity:1} }
+.dot1{animation:blink 1.2s infinite}
+.dot2{animation:blink 1.2s 0.2s infinite}
+.dot3{animation:blink 1.2s 0.4s infinite}
 </style>
 """

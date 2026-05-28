@@ -1,0 +1,27 @@
+\babel@toc {english}{}\relax 
+\addvspace {10\p@ }
+\contentsline {xchapter}{General Context and Project Framing}{3}{chapter.1}%
+\contentsline {figure}{\numberline {1.1}{\ignorespaces Global Platform Architecture and Component Interaction}}{8}{figure.caption.9}%
+\contentsline {figure}{\numberline {1.2}{\ignorespaces Trust Boundary Architecture separating Interpretation and Control Planes}}{8}{figure.caption.10}%
+\contentsline {figure}{\numberline {1.3}{\ignorespaces Project Planning Roadmap: Sprints and Milestone Execution}}{12}{figure.caption.13}%
+\addvspace {10\p@ }
+\contentsline {xchapter}{State of the Art and Theoretical Background}{15}{chapter.2}%
+\contentsline {figure}{\numberline {2.1}{\ignorespaces The Closed-Loop Feedback Control System of Intent-Based Networking}}{18}{figure.caption.16}%
+\contentsline {figure}{\numberline {2.2}{\ignorespaces Interactive Validation Pipeline incorporating Human-in-the-Loop Safeguards}}{21}{figure.caption.17}%
+\addvspace {10\p@ }
+\contentsline {xchapter}{System Design and Architecture}{23}{chapter.3}%
+\contentsline {figure}{\numberline {3.1}{\ignorespaces Multi-Tiered Block Architecture representing the Hard Trust Boundary}}{26}{figure.caption.19}%
+\contentsline {figure}{\numberline {3.2}{\ignorespaces NLP and RAG Ingestion and Context Enrichment Pipeline}}{27}{figure.caption.20}%
+\contentsline {figure}{\numberline {3.3}{\ignorespaces Read/Write Separation and Intent Routing Workflow}}{28}{figure.caption.21}%
+\contentsline {figure}{\numberline {3.4}{\ignorespaces Entity Grounding and Live Reconciliation Pipeline}}{29}{figure.caption.22}%
+\contentsline {figure}{\numberline {3.5}{\ignorespaces State Transition Diagram for multi-turn Administrator Sessions}}{34}{figure.caption.25}%
+\contentsline {figure}{\numberline {3.6}{\ignorespaces Transactional Verification and Lifecycle Management Workflow}}{35}{figure.caption.26}%
+\contentsline {figure}{\numberline {3.7}{\ignorespaces UML Use Case Diagram representing Operator Interactions and System Boundaries}}{36}{figure.caption.27}%
+\contentsline {figure}{\numberline {3.8}{\ignorespaces UML Class Diagram representing structural relationships of Python Backend Classes}}{37}{figure.caption.28}%
+\addvspace {10\p@ }
+\contentsline {xchapter}{Implementation, Testing, and Validation}{38}{chapter.4}%
+\contentsline {figure}{\numberline {4.1}{\ignorespaces Grounding Engine Rejecting a Non-Existent Policy ID (Proof 1)}}{52}{figure.caption.31}%
+\contentsline {figure}{\numberline {4.2}{\ignorespaces Compliance Engine Blocking a CRITICAL Wildcard Policy Creation (Proof 2)}}{54}{figure.caption.32}%
+\contentsline {figure}{\numberline {4.3}{\ignorespaces Visual Delta Diff Confirmation Pane and Rollback Recovery (Proof 3)}}{56}{figure.caption.33}%
+\contentsline {figure}{\numberline {4.4}{\ignorespaces Streamlit SOC Chat Dashboard — Dark Mode Interface with Sidebar Indicators}}{57}{figure.caption.34}%
+\contentsline {figure}{\numberline {4.5}{\ignorespaces Multi-Container Stack Running in Docker (fortigate-agent + chroma)}}{58}{figure.caption.35}%
