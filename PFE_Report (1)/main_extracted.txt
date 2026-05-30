@@ -1,0 +1,2283 @@
+
+---PAGE 1---
+MINISTRY OF HIGHER EDUCATION
+AND SCIENTIFIC RESEARCH
+UNIVERSITY OF TUNIS EL MANAR
+HIGHER INSTITUTE OF COMPUTER SCIENCE
+End-of-Studies Internship Report
+Submitted in partial fulfillment of the requirements for
+the Bachelor’s Degree in Engineering
+Specialization: Networks and Computer Systems Engineering
+By
+Abderrahmen Saidi
+Development of an intelligent agent for the
+automation, configuration and maintenance of a
+Fortinet FortiGate firewall
+Hosting Institution:Kleos
+Professional Supervisor:Mr. Heithem EL GHALI
+Academic Supervisor:Ms. Meha HACHANI
+Academic Year 2025/2026
+---PAGE 2---
+Organization Supervisor
+I authorize the student to submit their internship report.
+Signature and Stamp
+ISI Supervisor
+I authorize the student to submit their internship report.
+Signature
+---PAGE 3---
+Dedication
+I dedicate this work to my family and loved ones, whose support, encouragement, and kindness
+have guided me throughout this journey. Your love and faith in me have been a constant source
+of strength and inspiration.
+To all those who have stood by me, shared in my challenges, and celebrated my successes,
+I offer my heartfelt gratitude. May this work honor your unwavering support and bring you
+joy.
+Abderrahmen Saidi
+---PAGE 4---
+Acknowledgements
+I would like to express my sincere gratitude to Mr Heithem El Ghali, my professional supervi-
+sor, and Ms Meha Hachani, my academic supervisor, for their valuable guidance, continuous
+support, and insightful advice throughout the development of this project. Their expertise,
+patience, and encouragement played a crucial role in the completion of this work and greatly
+contributed to enriching my knowledge and understanding.
+I would also like to extend my heartfelt thanks to all the professors and staff of the Higher
+Institute of Computer Science (ISI) for their dedication and for the knowledge and skills they
+have provided during my academic journey.
+Finally, I would like to thank everyone who supported and encouraged me throughout the
+completion of this project.
+Abderrahmen Saidi
+---PAGE 5---
+Contents
+Dedication iii
+Acknowledgements iv
+List of Figures viii
+List of Tables ix
+List of Acronyms x
+General Introduction 1
+1 General Context and Project Framing 3
+1.1 Introduction . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 3
+1.2 Host Organization Presentation . . . . . . . . . . . . . . . . . . . . . . . . . . 4
+1.3 Existing System Analysis . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 4
+1.4 Problem Statement . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 5
+1.5 Project Objectives . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 5
+1.6 Proposed Solution: Deterministic AI-Assisted Orchestration . . . . . . . . . . 6
+1.7 Conceptual Architecture Philosophy . . . . . . . . . . . . . . . . . . . . . . . . 7
+1.8 Logical System Architecture & Trust Boundaries . . . . . . . . . . . . . . . . . 7
+1.9 Conceptual Routing & Intent Flow . . . . . . . . . . . . . . . . . . . . . . . . 8
+1.10 High-Level Grounding Concepts . . . . . . . . . . . . . . . . . . . . . . . . . . 9
+1.11 Operational Processing Pipeline . . . . . . . . . . . . . . . . . . . . . . . . . . 9
+1.12 Validation & Compliance Strategy . . . . . . . . . . . . . . . . . . . . . . . . . 10
+1.13 Infrastructure Lifecycle Management . . . . . . . . . . . . . . . . . . . . . . . 10
+1.14 Methodology and Task Distribution . . . . . . . . . . . . . . . . . . . . . . . . 10
+v
+---PAGE 6---
+Contents
+1.15 Project Planning . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 11
+1.16 Report Organization . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 13
+1.17 Chapter Conclusion . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 14
+2 State of the Art and Theoretical Background 15
+2.1 Introduction . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 15
+2.2 Evolution of Network Administration Paradigms . . . . . . . . . . . . . . . . . 16
+2.3 Intent-Based Networking (IBN) Foundations . . . . . . . . . . . . . . . . . . . 17
+2.4 Firewall Automation and FortiGate Management Challenges . . . . . . . . . . 18
+2.5 Conversational AI and LLMs in Network Automation . . . . . . . . . . . . . . 19
+2.6 Human-in-the-Loop (HITL) and Verification . . . . . . . . . . . . . . . . . . . 20
+2.7 Comparative Analysis of Orchestration Models . . . . . . . . . . . . . . . . . . 21
+2.8 Chapter Conclusion . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 22
+3 System Design and Architecture 23
+3.1 Introduction . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 23
+3.1.1 Transition from Theoretical Frameworks to Architecture . . . . . . . . 24
+3.2 System Requirements and Specifications . . . . . . . . . . . . . . . . . . . . . 24
+3.2.1 Functional Requirements . . . . . . . . . . . . . . . . . . . . . . . . . . 24
+3.2.2 Non-Functional Requirements . . . . . . . . . . . . . . . . . . . . . . . 25
+3.3 Global System Architecture . . . . . . . . . . . . . . . . . . . . . . . . . . . . 25
+3.4 The NLP and RAG Ingestion Pipeline . . . . . . . . . . . . . . . . . . . . . . 26
+3.4.1 Dynamic Intent Routing Engine . . . . . . . . . . . . . . . . . . . . . . 27
+3.4.2 Retrieval-Augmented Generation (RAG) Enrichment . . . . . . . . . . 28
+3.5 Translation and Execution Engine . . . . . . . . . . . . . . . . . . . . . . . . . 29
+3.5.1 Contextual Entity Grounding Algorithm . . . . . . . . . . . . . . . . . 29
+3.5.2 Operational Request Lifecycle . . . . . . . . . . . . . . . . . . . . . . . 30
+3.6 Security, Compliance, and Transactional Validation . . . . . . . . . . . . . . . 31
+3.6.1 Proactive Compliance and Safety Engine . . . . . . . . . . . . . . . . . 32
+3.6.2 Session Context and Conceptual State Transitions . . . . . . . . . . . . 33
+3.6.3 Lifecycle Management & Transactional Recovery . . . . . . . . . . . . 34
+3.6.3.1 Operational Recovery Boundaries and Limitations . . . . . . . 35
+3.6.4 Structured Audit and Integrity Logging . . . . . . . . . . . . . . . . . . 35
+3.7 UML Use Case and Structural Modeling . . . . . . . . . . . . . . . . . . . . . 36
+3.8 Chapter Conclusion . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 37
+vi
+---PAGE 7---
+Contents
+4 Implementation, Testing, and Validation 38
+4.1 Introduction . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 38
+4.2 Development and Testing Environment . . . . . . . . . . . . . . . . . . . . . . 39
+4.3 System Implementation and Technical Audit . . . . . . . . . . . . . . . . . . . 40
+4.3.1 Codebase Directory Structure and File Metrics . . . . . . . . . . . . . . 40
+4.3.2 Natural Language Understanding and Intent Extraction . . . . . . . . . 42
+4.3.3 Contextual Entity Grounding and Normalization . . . . . . . . . . . . 43
+4.3.4 Deterministic Compliance and Security Gate . . . . . . . . . . . . . . . 43
+4.3.5 Conversational Session State and Pronoun Resolution . . . . . . . . . . 44
+4.3.6 Transaction Snapshot Store and Rollback Engine . . . . . . . . . . . . 45
+4.3.7 Cryptographic Integrity and Audit Log Chain . . . . . . . . . . . . . . 46
+4.4 Core Algorithm Implementation Listings . . . . . . . . . . . . . . . . . . . . . 46
+4.4.1 Algorithm 1: Contextual Entity Grounding Engine . . . . . . . . . . . 46
+4.4.2 Algorithm2: DeterministicComplianceGate(ShadowedPolicyDetection) 48
+4.4.3 Algorithm 3: Rolling SHA-256 Audit Hash Chain . . . . . . . . . . . . 49
+4.5 System Validation and Architectural Proofs . . . . . . . . . . . . . . . . . . . 51
+4.5.1 Proof 1: Hallucination Prevention via the Grounding Engine . . . . . . 51
+4.5.2 Proof 2: Deterministic Safety via the Compliance Gate . . . . . . . . . 52
+4.5.3 Proof 3: Transactional Integrity via Rollback and HITL Confirmation . 54
+4.6 Streamlit Security Operations Center Interface . . . . . . . . . . . . . . . . . . 56
+4.6.1 Interface Architecture and Design Rationale . . . . . . . . . . . . . . . 56
+4.6.2 Interface Components . . . . . . . . . . . . . . . . . . . . . . . . . . . 56
+4.7 Containerized Deployment Architecture . . . . . . . . . . . . . . . . . . . . . . 57
+4.7.1 Multi-Container Service Decomposition . . . . . . . . . . . . . . . . . . 57
+4.7.2 Configuration, Secrets, and Data Persistence . . . . . . . . . . . . . . . 58
+4.8 Architectural Limitations and Honest Assessment . . . . . . . . . . . . . . . . 58
+4.9 Future Work . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 59
+4.10 Chapter Conclusion . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 60
+Bibliography 62
+vii
+---PAGE 8---
+List of Figures
+1.1 Global Platform Architecture and Component Interaction . . . . . . . . . . . . . 8
+1.2 Trust Boundary Architecture separating Interpretation and Control Planes . . . 8
+1.3 Project Planning Roadmap: Sprints and Milestone Execution . . . . . . . . . . . 12
+2.1 The Closed-Loop Feedback Control System of Intent-Based Networking . . . . . 18
+2.2 Interactive Validation Pipeline incorporating Human-in-the-Loop Safeguards . . 21
+3.1 Multi-Tiered Block Architecture representing the Hard Trust Boundary . . . . . 26
+3.2 NLP and RAG Ingestion and Context Enrichment Pipeline . . . . . . . . . . . . 27
+3.3 Read/Write Separation and Intent Routing Workflow . . . . . . . . . . . . . . . 28
+3.4 Entity Grounding and Live Reconciliation Pipeline . . . . . . . . . . . . . . . . 29
+3.5 State Transition Diagram for multi-turn Administrator Sessions . . . . . . . . . 34
+3.6 Transactional Verification and Lifecycle Management Workflow . . . . . . . . . . 35
+3.7 UML Use Case Diagram representing Operator Interactions and System Boundaries 36
+3.8 UML Class Diagram representing structural relationships of Python Backend
+Classes . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 37
+4.1 Grounding Engine Rejecting a Non-Existent Policy ID (Proof 1) . . . . . . . . . 52
+4.2 Compliance Engine Blocking a CRITICAL Wildcard Policy Creation (Proof 2) . 54
+4.3 Visual Delta Diff Confirmation Pane and Rollback Recovery (Proof 3) . . . . . . 56
+4.4 Streamlit SOC Chat Dashboard — Dark Mode Interface with Sidebar Indicators 57
+4.5 Multi-Container Stack Running in Docker (fortigate-agent + chroma) . . . . . . 58
+viii
+---PAGE 9---
+List of Tables
+1.1 Division of Responsibilities: Probabilistic vs. Deterministic Planes . . . . . . . . 7
+1.2 Intent Classification and Routing Architecture . . . . . . . . . . . . . . . . . . . 9
+1.3 Agile Development Phases and Project Milestones . . . . . . . . . . . . . . . . . 11
+1.4 Project Planning: Sprint Timeline, Tasks, and Key Deliverables . . . . . . . . . 13
+2.1 Comparative Matrix of Traditional Network Administration Paradigms . . . . . 17
+2.2 Comparative Analysis of Network Orchestration Models . . . . . . . . . . . . . . 21
+3.1 Lifecycle Phases of the Operational Request Pipeline . . . . . . . . . . . . . . . 31
+3.2 Multi-Tiered Validation and Security Enforcement Layers . . . . . . . . . . . . . 32
+4.1 Development and Testing Environment Specifications . . . . . . . . . . . . . . . 39
+4.2 FortiGate AI Agent Codebase Structure and Metrics . . . . . . . . . . . . . . . 41
+ix
+---PAGE 10---
+List of Acronyms
+AIArtificial Intelligence
+APIApplication Programming Interface
+CLICommand Line Interface
+CPUCentral Processing Unit
+DBDatabase
+DNSDomain Name System
+HTTPHyperText Transfer Protocol
+HTTPSHyperText Transfer Protocol Secure
+RESTRepresentational State Transfer
+SSHSecure Shell
+VPNVirtual Private Network
+IPInternet Protocol
+CIDRClassless Inter-Domain Routing
+NATNetwork Address Translation
+GUIGraphical User Interface
+UIUser Interface
+LLMLarge Language Model
+NLPNatural Language Processing
+x
+---PAGE 11---
+List of Acronyms
+NLUNatural Language Understanding
+RAGRetrieval-Augmented Generation
+HITLHuman-in-the-Loop
+JSONJavaScript Object Notation
+SHASecure Hash Algorithm
+RBACRole-Based Access Control
+ACLAccess Control List
+IDSIntrusion Detection System
+IPSIntrusion Prevention System
+SDNSoftware-Defined Networking
+IBNIntent-Based Networking
+DNADigital Network Architecture
+VMVirtual Machine
+OSOperating System
+RAMRandom Access Memory
+URLUniform Resource Locator
+TCPTransmission Control Protocol
+UDPUser Datagram Protocol
+SSLSecure Sockets Layer
+TLSTransport Layer Security
+TELNETTeletype Network
+RDPRemote Desktop Protocol
+SMBServer Message Block
+FWFirewall
+xi
+---PAGE 12---
+List of Acronyms
+FGTFortiGate
+WANWide Area Network
+UMLUnified Modeling Language
+UUIDUniversally Unique Identifier
+RFCRequest for Comments
+IRTFInternet Research Task Force
+MTTRMean Time to Repair
+xii
+---PAGE 13---
+General Introduction
+With the rapid expansion of network infrastructures, cybersecurity has become central to an
+organisation’s resilience in the digital age. Firewalls are the first line of defence and must be
+properly managed and configured to safeguard sensitive data from the ever-evolving threat
+landscape. Traditionalmethodsoffirewalladministration, whichrelyonmanualcommand-line
+input and complex graphical user interfaces, cannot meet the speed and complexity demanded
+by modern networks.
+The most significant challenge to network administration today is the "semantic gap" be-
+tween high-level security goals and low-level technical implementation. The security adminis-
+trator’s intent must be translated into vendor-specific syntax (i.e., configuration rules) manu-
+ally, and this is not only a lengthy process but also very error-prone. A small misconfiguration
+of a security policy can result in a serious vulnerability and/or a disruption of service.
+This final-year project, carried out atKleos Tunisia, addresses these inefficiencies at the
+intersection of Artificial Intelligence and Network Security. The main goal is to develop and
+implement a hybrid AI-assisted administration agent forFortinet FortiGatefirewalls. We
+propose a system that leverages Large Language Models (LLMs) and Retrieval-Augmented
+Generation (RAG) to enable administrators to interact with infrastructure through natural
+language.
+The innovation of the project lies in its multi-layered approach:
+•Natural Language Processing:Understanding administrative intent in English and
+French with the Mistral model.
+•Grounding in context:Implement a RAG mechanism based on ChromaDB to ensure
+that all generated configurations strictly follow the official Fortinet technical documen-
+tation.
+•Security and Verification:A rigorous validation pipeline and human-in-the-loop
+1
+---PAGE 14---
+General Introduction
+mechanism will be in place to ensure no configuration is deployed without validation
+and structured audit logging.
+In this work, we show how generative AI can be transformed from a general-purpose tool
+into a specialized, trustworthy, and safe network administration assistant, thereby reducing
+operational overhead and improving the enterprise’s overall security posture.
+2
+---PAGE 15---
+1
+General Context and Project Framing
+1.1 Introduction
+AutomationandIntent-Based Networking (IBN)are driving modernization of the en-
+terprise network infrastructure. In highly dynamic security environments, firewalls are an
+important enforcement point for security postures and require constant and accurate admin-
+istration. The complexity of network management is due to the huge number of low-level
+device configurations, as shown in the seminal work by Benson et al. [1]. In the past, net-
+work admins had to manually configure these devices, either through command-line interfaces
+(CLIs), graphical dashboards or static infrastructure-as-code (IaC) scripts. But at the scale
+of infrastructure and more dynamic operational needs, the cognitive load on administrators
+becomes much more significant. Configuration drift or delayed incident response from a cog-
+nitive burden is common; indeed, empirical analyses by Oppenheimer et al. [2] suggest that
+human configuration errorremains the primary driver of major internet service outages.
+Embeddingconversational artificial intelligenceinto infrastructure engineering is a
+potentially disruptive paradigm shift in the administration of systems. AdvancedNatural
+Language Understanding (NLU)capabilities enable direct translation of abstract human
+3
+---PAGE 16---
+1.2. Host Organization Presentation
+intent to low-level configuration syntax. A recent evaluation by Wang et al. [3] notes that
+Large Language Models (LLMs) can generate network commands effectively, but guarantees
+of their complete syntactic and semantic correctness remain a significant challenge. Enterprise
+networks need to be orchestrated withdeterministic behavior, far from theprobabilis-
+tic vaguenessandhallucination dangersof probabilistic language models. Therefore,
+this project is based on the development of a secure hybrid AI-assisted network orchestration
+and FortiGate administration prototype. The system decouples conversational administration
+from astrictly deterministic control plane, closing the semantic gap between high-level
+intention and automated execution. In this chapter we present the background of the project,
+we discuss the main limitations of current paradigms and we introduce the architectural phi-
+losophy behind our prototype of secure orchestration.
+1.2 Host Organization Presentation
+This graduation project was conducted at the department ofcybersecurity and network
+engineering,Kleos. We are experts in secure network architecture design, deployment and
+maintenance of enterprise networks. The research was motivated by the need to optimize
+administrative workflows, reduce mean time to resolution (MTTR) for operational requests,
+and simplify firewall management. We intend to be at the cutting edge of building a ma-
+ture,conversational operations assistantwith NLU capabilities without compromising
+the rigorous demands of secure systems engineering.
+1.3 Existing System Analysis
+The operational management of FortiGate appliances varies betweenmanual intervention
+andstatic automation. Manual administration through FortiOS allows for nuanced deci-
+sions, but is inherently slow and prone to human error. In a detailed study of routing anoma-
+lies, Mahajan et al. [4] demonstrated how small configuration errors can trigger cascading
+global effects. Static automation frameworks (e.g. Ansible or Terraform) on the other hand
+guarantee configuration consistency, but at the cost of considerableoperational rigidity.
+Static policy-based systems such as CFEngine pioneered by Burgess [5] demand significant
+domain-specific expertise and are not designed to dynamically adapt to ad-hoc administrative
+queries or real-time conversational troubleshooting.
+Recent attempts to introduce generic conversational agents into the network operations
+4
+---PAGE 17---
+1.4. Problem Statement
+space have uncovered critical systemic gaps:
+•No Active State Synchronization:Generic assistants don’t have an active context
+of the current firewall configuration, so they propose changes that conflict with existing
+address objects or shadow existing routing rules. The lack of dynamic synchronization
+exacerbatesthisproblem, oftenresultinginpersistentdeploymentflaws, asdemonstrated
+by empirical studies of configuration scripts by Rahman and Williams [6].
+•Lack of Entity Reconciliation:Generic tools cannot deterministically reconcile am-
+biguous entities (e.g., “the web server”) in unstructured network intents with live infras-
+tructure objects.
+•Execution Imbalance:The current paradigms often give the untrusted NLU inter-
+preter direct execution capabilities, which contravenes fundamental infrastructure-as-
+code principles where execution must be predictable, verifiable and under strict control.
+1.4 Problem Statement
+The key challenge in modern network orchestration is not only executing commands but also
+understand intent correctly and reconciling with live operational environment safely. IBN re-
+quires a continuous closed loop thattranslates, activates and verifiesintent against active
+system state according to Leivadeas and Falkner [7]. While human error remains the main
+cause of security outages, critical infrastructure state transitions cannot be blindly trusted to
+fully automated, probabilistic systems. Recent work in software-defined networking empha-
+sizes the importance of validating configurations before deployment to avoid severe connectiv-
+ity loss.
+The main problem studied in this thesis is:how to build a conversational administration
+prototype that reduces FortiGate operational workflows with AI-assisted natural language un-
+derstanding, while adhering to strictdeterministic orchestration,active state synchro-
+nizationandverifiable infrastructure-as-codeprinciples for configuration changes?
+1.5 Project Objectives
+The main purpose of this thesis is to design architecturally mature hybrid network orchestra-
+tion prototype. The particular engineering goals are:
+5
+---PAGE 18---
+1.6. Proposed Solution: Deterministic AI-Assisted Orchestration
+1.Conversational Administration:Build a natural language interface to simplify com-
+plex FortiGate operations and reduce the cognitive burden for network operators.
+2.Contextual Grounding & Reconciliation:Develop a strong entity extraction en-
+gine to map abstract human intents to exact FortiOS REST API schemas and live
+infrastructure objects.
+3.Dynamic Routing Architecture:Build a routing pipeline that separates read-only
+operational queries from state-mutating execution requests.
+4.DeterministicOrchestration:AllAPIorchestration, validationandcompliancecheck-
+ing must be done entirely in a deterministic Python control plane. This is consistent with
+the strict, automated testing paradigms proposed by Sokolowski et al. [8] for verifying
+the safety of Infrastructure-as-Code programs before state changes are applied.
+5.InfrastructureLifecycleManagement:Addtransaction-likestate-restorationrecov-
+ery protocols, employing active configuration snapshots and post-execution verification,
+to guarantee operational integrity and prevent partial state errors.
+1.6 Proposed Solution: Deterministic AI-Assisted Or-
+chestration
+We propose a solution in the form of a hybrid network orchestration prototype supported by
+NLU, specifically tailored to FortiGate environments. The system takes in natural language
+queries and routes them through a controlled routing pipeline. Routine operational queries
+and searches of documentation are passed through aRetrieval-Augmented Generation
+(RAG)architecture. RAG, as initially introduced by Lewis et al. [9], integrates pre-trained
+language models with dense vector retrieval to deliver precise, grounded, and contextually
+rich responses without the need for model retraining. RAG-enhanced architectures have been
+shown to be highly effective for parsing technical documentation and log files in network
+operations [10]. For administrative mutations, a dedicated NLU engine extracts structured
+intent that is immediately handed over to a deterministic Python orchestration backend. This
+control plane performsentity reconciliation,forward-looking compliance checking,
+Human-in-the-Loop (HITL) approvalandtransactional API execution. The plat-
+form is a hybrid AI-assisted operations assistant, streamlining the administrator’s workflow
+and enforcing strict security standards.
+6
+---PAGE 19---
+1.7. Conceptual Architecture Philosophy
+1.7 Conceptual Architecture Philosophy
+The architectural philosophy of the platform is built upon the strict segregation of conversa-
+tional interpretation and deterministic orchestration. In enterprise environments, the network
+state must be treated asimmutableuntil systematically validated.
+Table 1.1:Division of Responsibilities: Probabilistic vs. Deterministic Planes
+Domain Probabilistic Interpretation
+Plane (AI)
+Deterministic Control Plane
+(Python)
+Core Function Intent parsing, semantic under-
+standing, unstructured data ex-
+traction.
+API orchestration, state valida-
+tion, execution, and verification.
+Data Handling Natural language to structured
+JSON mapping.
+JSON schema validation, IP
+regex checks, entity reconcilia-
+tion.
+Operational Con-
+text
+RAG-assisted contextual refer-
+ence.
+Live API state synchronization
+and lifecycle management.
+Execution Au-
+thority
+None. Strictly constrained to in-
+terpretation.
+Absolute authority over all API
+state mutations.
+By formalizing this division, the architecture ensures that the AI is utilized exclusively for
+its strengths in semantic mapping, while the Python backend guarantees theidempotency,
+safety, and predictabilityrequired in professional network engineering.
+1.8 Logical System Architecture & Trust Boundaries
+The global architecture is designed to orchestrate the complete lifecycle of an administrative
+request from conversational ingestion to final verification.
+7
+---PAGE 20---
+1.9. Conceptual Routing & Intent Flow
+Administrator
+Interface
+Dynamic
+Intent Router
+RAG Engine &
+Query Resolver
+FortiGate
+Infrastructure
+NLU Grounding
+Engine
+Validation &
+Compliance
+HITL
+Confirmation
+Deterministic
+Orchestrator
+Read Write
+REST API
+State Query
+Figure 1.1:Global Platform Architecture and Component Interaction
+One important part of this design is to establish hardtrust boundaries. All outputs
+of probabilistic language models are treated asunvalidated databy the system until they
+pass thedeterministic validation threshold. This is in line with the interactive machine
+learning paradigm explored by Gómez-Carmona et al. [11], which aims to keep the human
+in the loop to review and validate complex decisions, so that automated systems can be kept
+safe, interpretable, and under tight human supervision.
+Interpretation
+Plane
+(NLU Extraction)
+Validation Engine
+(Schema & Logic)
+Execution Engine
+(State Mutation)
+TRUST BOUNDARY THRESHOLD
+JSON Intent Sanitized Payload
+Figure 1.2:Trust Boundary Architecture separating Interpretation and Control Planes
+1.9 Conceptual Routing & Intent Flow
+The platform is designed with a dynamic intent routing architecture that enables interac-
+tion with infrastructure and guarantees the safety of operations. The router does not give
+equal treatment to all conversational inputs, but classifies the intent to enforce structural
+Read/Write operational isolation.
+8
+---PAGE 21---
+1.10. High-Level Grounding Concepts
+Table 1.2:Intent Classification and Routing Architecture
+Operation Class Routing Destination Architectural Objective
+State Query Live API Read Engine Retrievecurrentinterfacestatus, active
+policies, or system health directly from
+the infrastructure.
+Knowledge Query RAG Reference Engine Query indexed Fortinet documentation
+to assist the administrator.
+Mutation Request NLU Grounding Pipeline Extract structured intent for creating,
+modifying, or deleting operational con-
+figurations.
+Ambiguous Intent Clarification Loop Reject vague requests and logically
+prompt the user for mandatory oper-
+ational parameters.
+1.10 High-Level Grounding Concepts
+A primary engineering issue encountered in intent-based orchestration systems is converting
+vague human references into strict infrastructure identifiers. This semantic conversion pro-
+cess is accomplished by theGrounding Engine. For instance, if an administrator requests
+to "block traffic from the web servers," then the NLU will extract the entity concept. Fol-
+lowing this extraction, the deterministicreconciliation enginequeries the live FortiGate
+state to obtain the exact address object names or IP subnets needed by the underlying API
+corresponding to "web servers."
+Ifanentitycannotbedefinitivelyresolvedagainsttheliveinfrastructurestate, orifrequired
+operational parameters are missing, the system initiates aConversational Clarification
+Loop. This workflow ensures the platform behaves as a collaborative administrative assistant,
+persistently requesting specific context until the intent is deterministically sound.
+1.11 Operational Processing Pipeline
+To ensure deterministic execution, every mutation request traverses a rigorous operational
+lifecycle. This pipeline acts as a sequential state machine, guiding an administrative request
+9
+---PAGE 22---
+1.12. Validation & Compliance Strategy
+from its initial natural language ingestion, through entity grounding and human-in-the-loop
+review, down to the final REST API orchestration and verification. The deeply technical
+execution mechanics of this lifecycle, including the multi-phase transition matrix, are explored
+extensively in Chapter 3.
+1.12 Validation & Compliance Strategy
+Before any configuration payload reaches the execution layer, it is subjected to a multi-tiered
+validation strategy. This strategy enforces structural integrity (syntactic checking), dynamic
+reconciliation (semantic grounding), and strict organizational security postures (proactive
+compliance). By validating intents conceptually before they are executed physically, the plat-
+form prevents misconfigurations. The mathematical logic driving these compliance gates is
+detailed in the architectural design sections of Chapter 3.
+1.13 Infrastructure Lifecycle Management
+Whileconversationalinterpretationformstheprobabilisticlayeroftheplatform, robustinfrastructure-
+as-code principles mandate fail-safe execution mechanics. Network configurations are intrinsi-
+cally stateful; partial API updates can inadvertently sever remote administrative access. Con-
+sequently, the platform embeds snapshot and state-restoration (rollback) protocols natively
+into the orchestration engine. This guarantees transaction-like safety for all administrative
+modifications, the programmatic implementation of which is analyzed in Chapter 3.
+1.14 Methodology and Task Distribution
+The project was executed utilizing anAgile engineering methodology, incorporating it-
+erative sprints to progressively build, integrate, and harden the architecture. This approach
+facilitated the continuous refinement of the conversational interface while rigorously testing
+the deterministic API orchestration against simulated enterprise topologies.
+10
+---PAGE 23---
+1.15. Project Planning
+Table 1.3:Agile Development Phases and Project Milestones
+Engineering
+Phase
+Core Deliverables and Focus Areas
+Architecture De-
+sign
+State of the art analysis, system modeling, defining
+trust boundaries, and read/write separation models.
+API Orchestra-
+tion
+Development of the deterministic Python backend,
+state synchronization, snapshot, and restoration mod-
+ules.
+Intelligence Layer Implementation of the NLU grounding pipeline, entity
+reconciliation, and the intent routing architecture.
+Workflow Refine-
+ment
+Integration of the clarification loop, HITL interfaces,
+and proactive compliance enforcement.
+Validation Comprehensive system testing, latency optimization,
+and verification against complex edge-case network
+scenarios.
+1.15 Project Planning
+The implementation and orchestration of this graduation project were arranged in a sequential
+manner to address the critical dependencies between the deterministic execution layers and
+probabilistic conversational interfaces. A first engineering phase focused on developing and
+hardening the deterministic Python orchestration engine, with all API bindings, state recov-
+ery snapshots and verification pipelines thoroughly tested. NLU grounding layer and RAG
+capabilities were then combined and deployed Human-in-the-Loop (HITL) workflow and con-
+versational clarification loops.
+The project was divided into five discrete phases in order with a total of 12 weeks (3
+months) duration for professional engineering and strict schedule follow-up. Figure 1.3 shows
+the roadmap of the visual execution. The vertical waterfall of engineering sprints and the
+dashed trigger points for core project milestones.
+11
+---PAGE 24---
+1.15. Project Planning
+Phase 1: Architectural Design
+Weeks 1 – 2
+Phase 2: Deterministic Engine
+Weeks 3 – 5
+Phase 3: NLU Grounding
+Layer
+Weeks 6 – 8
+Phase 4: Workflow Hardening
+Weeks 9 – 10
+Phase 5: System Validation
+Weeks 11 – 12
+Milestone 1: Architectural Blueprint
+System design and trust boundaries
+signed off.
+Milestone 2: Execution Engine
+Deterministic Python control plane
+completed.
+Milestone 3: Grounded NLU
+Intent router and entity resolver opera-
+tional.
+Milestone 4: HITL Integration
+Clarification loop and authorization
+portal verified.
+Milestone 5: Thesis Draft
+Benchmark evaluation and final thesis
+signed off.
+Figure 1.3:Project Planning Roadmap: Sprints and Milestone Execution
+Complementing the visual roadmap, Table 1.4 outlines the detailed schedule of develop-
+ment sprints, core engineering tasks, and concrete academic deliverables for each phase of the
+project lifecycle.
+12
+---PAGE 25---
+1.16. Report Organization
+Table 1.4:Project Planning: Sprint Timeline, Tasks, and Key Deliverables
+Project Phase Timeline Core Tasks & Sprints Key Deliverables
+Phase 1: Architecture Weeks 1–2 Literature review, state-of-
+the-art analysis, architec-
+tural system design.
+Sign-off on system architecture
+and trust boundary definitions.
+Phase 2: Execution Weeks 3–5 Development of determin-
+istic Python REST API
+wrappers, local state snap-
+shot mechanisms, validation
+modules.
+Fully functional API orchestra-
+tion control plane with rollback
+capabilities.
+Phase 3: NLU Layer Weeks 6–8 Intent router training, en-
+tity extraction models, RAG
+vector database indexing for
+technical documentation.
+Trained intent router and op-
+erational RAG-assisted knowl-
+edge query resolver.
+Phase 4: Workflow Weeks 9–10 Human-in-the-Loop web
+portal integration, conver-
+sation clarification loops,
+policy verification hooks.
+Dual-interface (Streamlit ad-
+min panel and HITL approval
+portal)fullycoupledwithback-
+end.
+Phase 5: Validation Weeks 11–12 Synthetic load testing,
+latency benchmarking, con-
+figuration error recovery
+checks, final report writing.
+Complete benchmark analysis,
+performance evaluation met-
+rics, and thesis submission.
+1.16 Report Organization
+The remainder of this thesis is structured as follows:
+•Chapter 2: State of the Art and Theoretical Background:Explores modern
+infrastructure automation, the evolution of Intent-Based Networking (IBN), and the
+integration of conversational interfaces in systems engineering.
+•Chapter 3: System Design and Architecture:Details the conceptual, structural,
+and detailed design of the system, including the routing engine, entity grounding, vali-
+dation compliance algorithms, and UML diagrams.
+13
+---PAGE 26---
+1.17. Chapter Conclusion
+•Chapter 4: Implementation, Testing, and Validation:Showcases the implemen-
+tation environment, the Streamlit user interface, experimental test cases (grounding,
+compliance blocks, and rollbacks), performance results, and system limitations.
+1.17 Chapter Conclusion
+The introduction to the subject matter and engineering scope of the project is the purpose of
+this chapter. As we assessed the complexity of today’s infrastructure management, we discov-
+ered anoperational gap(i.e., not to be confused with gaps related to processes) where the
+degree of flexibility of conversational AI does not meet the degree of dependability required for
+professional orchestration in this context. Through a well-developedhybrid architectural
+solution, this platform addresses the gap between the operational flexibility of conversational
+artificial intelligence (AI) and the absolute dependability of professional orchestration (a case
+study in the previous section of the introduction section of this document) by creating a
+secure operational assistant that leverages technology to providecontrolled routing,accu-
+rate object grounding(which the next chapter covers),live state reconciliation, and
+deterministic validation.
+Therigorous lifecycle management processesincorporated into the platform (i.e.,
+compliance,Human-in-the-Loop (HITL) authorization, andvalidation) lend them-
+selves to improving the use of natural language to manage enterprise security architectures
+while protecting the integrity of these systems in a deterministic manner. The following
+chapters will provide a more in-depth look at the theoretical approaches and implementation
+technologies that will enable the next generation of orchestration platforms to be operational-
+ized.
+14
+---PAGE 27---
+2
+State of the Art and Theoretical Background
+2.1 Introduction
+The integration of conversational artificial intelligence into network orchestration represents a
+major technological paradigm shift in infrastructure engineering. The transition toward intent-
+driven networking (Intent-Based Networking or IBN) requires a comprehensive understanding
+of automation paradigms, semantic modeling, and formal validation. The primary objective of
+this chapter is to establish a rigorous theoretical foundation and conduct a structured review
+of the current state of the art in network automation technologies.
+First, we will analyze the historical evolution of network administration paradigms, tracing
+the path from manual interventions using command-line interfaces (CLIs) to imperative and
+declarative Infrastructure-as-Code (IaC) architectures. Second, we will detail the core foun-
+dations of Intent-Based Networking, exploring its closed-loop feedback control loop. Third,
+we will introduce a dedicated discussion on the specific challenges associated with firewall
+automation and FortiGate management. Fourth, we will study the contribution of Large Lan-
+guage Models (LLMs) in translating natural language intent into structured system payloads,
+while identifying their semantic limitations and the necessity of a deterministic control plane
+15
+---PAGE 28---
+2.2. Evolution of Network Administration Paradigms
+to guarantee the operational safety of network security appliances. Finally, we will present a
+comparative analysis of these orchestration models to justify our hybrid design.
+2.2 Evolution of Network Administration Paradigms
+Network infrastructure administration has historically relied on manual interventions, charac-
+terized by the direct execution of commands on command-line interfaces (CLIs) or proprietary
+graphical user interfaces (GUIs). Although these manual processes provide high flexibility for
+ad-hoc troubleshooting, they fail to meet the scalability and consistency requirements of mod-
+ern enterprise environments. As demonstrated by Benson et al. [1], manual network manage-
+ment places a high cognitive burden on system administrators. This burden frequently results
+in configuration drift and inconsistent security policy enforcement across distributed systems.
+To resolve these challenges, Infrastructure-as-Code (IaC) introduced a structured, pro-
+grammatic approach to resource provisioning and lifecycle management. The IaC paradigm
+is traditionally divided into two distinct execution methodologies:
+•ImperativeParadigm:Theadministratorexplicitlydefinesthesequenceofcommands
+and API calls required to reach the desired state (e.g., employing Python scripts or
+Ansible playbooks). This methodology requires manual handling of execution ordering
+and error recovery.
+•Declarative Paradigm:The administrator defines the desired final state of the net-
+work resource (e.g., using Terraform configuration files), leaving the underlying orches-
+tration engine to automatically compute the transition delta (state graph) and execute
+the required mutations. The pioneering work on site configuration engines by Burgess
+[5] demonstrated the effectiveness of declarative, autonomous systems in converging con-
+figurations toward stable target states.
+Despite these programmatic advancements, static declarative IaC frameworks present sig-
+nificant limitations when deployed in live, dynamic enterprise network environments. First,
+they assume complete ownership over the target device state. If an administrator applies
+an out-of-band change directly to a security device—such as blocking a malicious IP address
+during an active security incident—the local state file becomes out of sync. A subsequent
+execution of the IaC pipeline would overwrite this emergency rule, introducing a security
+regression. Second, static configurations lack real-time adaptability, meaning they cannot
+dynamically adjust rule ordering or validate state parameters against active, live network
+16
+---PAGE 29---
+2.3. Intent-Based Networking (IBN) Foundations
+metrics. Additionally, an empirical study of configuration scripts by Rahman and Williams [6]
+highlighted that a significant portion of deployment failures stem from defective or untested
+declarative code.
+Paradigm Core Benefits Key Technical Limitations
+Manual CLI /
+GUI
+High direct control, no initial
+software dependencies.
+High human error rate [2], lack of
+scalability, configuration drift.
+Imperative IaC Explicit execution paths, granu-
+lar debugging capabilities.
+Rigid dependency trees, high
+maintenance cost, limited self-
+healing.
+Declarative IaC High abstraction, idempotent ex-
+ecutions, drift convergence [5].
+Rigid schema definitions, lack
+of run-time adaptiveness to dy-
+namic user queries.
+Table 2.1:Comparative Matrix of Traditional Network Administration Paradigms
+As summarized in Table 2.1, traditional approaches present trade-offs between operational
+agility and configuration safety. To transcend these boundaries and address the rigidity of
+static code, the concept of Intent-Based Networking has emerged as a dynamic alternative.
+2.3 Intent-Based Networking (IBN) Foundations
+Intent-Based Networking (IBN) redefines how networks are orchestrated by replacing low-level
+device configurations with high-level, abstract human intentions. According to the compre-
+hensive survey by Leivadeas and Falkner [7], an IBN system is a software platform capable
+of automatically translating high-level business policies into exact, concrete device configura-
+tions, while continuously verifying that the active state matches the requested intent.
+The structural architecture of a mature IBN system is designed around a continuous closed-
+loop control system composed of four sequential phases:
+1.Translation (Ingestion):Capturing abstract human intent and performing semantic
+validation against existing infrastructure objects.
+2.Activation(Orchestration):Computingthetargetconfiguration, allocatingresources,
+and executing modifications via REST APIs.
+17
+---PAGE 30---
+2.4. Firewall Automation and FortiGate Management Challenges
+3.Verification (Audit):Analyzing real-time telemetry to ensure that the physical in-
+frastructure state matches the intended design.
+4.Remediation (Correction):Executing automated rollback or repair scripts if a state
+drift or compliance violation is detected.
+This persistent feedback loop ensures that the network continuously aligns with organiza-
+tional security postures.
+Translation
+(NLU
+Grounding)
+Activation
+(API Or-
+chestration)
+Verification
+(Dynamic
+Auditing)
+Remediation
+(Automated
+Rollback)
+Target State
+Live Sync
+Drift Detect
+Restore
+Figure 2.1:The Closed-Loop Feedback Control System of Intent-Based Networking
+The closed loop is illustrated in Figure 2.1. In this project, we apply these core feedback
+principles to the administration of FortiGate appliances by coupling conversational NLU with
+a deterministic execution pipeline. However, translating high-level intent into device-level
+configurations requires addressing specific domain challenges unique to security appliances,
+which we explore in the following section.
+2.4 Firewall Automation and FortiGate Management
+Challenges
+Whilegeneralcloudorchestrationplatformsmanageresourcesthatarelargelyorder-independent
+(such as compute instances or storage buckets), firewall automation operates under much
+stricter constraints. Security gateways enforce access control lists (ACLs) and stateful poli-
+cies, introducing several complex challenges that any automated system must address:
+•Policy Ordering and Shadowing:Firewall rules are processed sequentially in a top-
+down, first-match approach. If a broad rule is mistakenly positioned before a specific
+policy, it will "shadow" the specific rule, rendering it obsolete. An automated agent must
+ensure that rule insertion happens at the correct index to avoid creating security gaps.
+18
+---PAGE 31---
+2.5. Conversational AI and LLMs in Network Automation
+•NAT and Routing Consistency:Modifying a security policy often requires coordi-
+nating changes in Network Address Translation (NAT) rules, Virtual IPs (VIPs), and
+routing tables. A mismatch between these components can lead to immediate packet
+drops or expose internal networks.
+•Configuration Drift:Firewalls are critical enforcement points. During security in-
+cidents, administrators frequently apply temporary, out-of-band rules directly to the
+appliance CLI or GUI. These manual changes disrupt static configuration templates,
+making live synchronization and drift detection essential.
+•Operational Criticality:A misconfigured virtual machine affects only that specific
+host, whereas a misconfigured core firewall policy can disconnect an entire subnet, dis-
+rupt corporate VPN gateways, or expose sensitive database segments to the public in-
+ternet.
+•Verifiability and Self-Healing:If an automated configuration push contains a logical
+error that blocks administrative traffic (such as disabling the management interface or
+blocking the REST API port), the system must detect this loss of connectivity and
+automatically roll back to the last known stable state.
+Because of these domain-specific risks, firewall environments require stronger validation
+safeguards than generic cloud systems. We must therefore ensure that the translation of
+natural language queries is strictly controlled and verified before execution.
+2.5 Conversational AI and LLMs in Network Automa-
+tion
+The emergence of Large Language Models (LLMs) has introduced conversational capabilities
+into network administration. Instead of memorizing proprietary syntax or writing complex
+files, administrators can declare intent using natural language. The LLM serves as a semantic
+translator, converting unstructured text into structured parameter payloads (typically JSON
+schemas).
+However, introducing probabilistic LLMs directly into critical control planes poses signifi-
+cant operational and security challenges:
+•Probabilistic Execution Model:Unlike traditional compilers, LLMs behave prob-
+abilistically. The same natural language input can produce syntactically different API
+19
+---PAGE 32---
+2.6. Human-in-the-Loop (HITL) and Verification
+payloads, introducing unpredictable execution behaviors. As evaluated in the NetCon-
+fEval framework by Wang et al. [3], LLMs frequently struggle to generate syntactically
+accurate network configs under real-world infrastructure constraints.
+•Hallucination Vulnerabilities:Probabilistic models can hallucinate invalid IP ad-
+dresses, non-existent interfaces, or deprecated API arguments. These errors can cause
+severe outages if executed without verification.
+•Lack of Real-Time Infrastructure Context:Static language models cannot query
+active firewall state. This limitation can cause them to generate configurations that
+conflict with pre-existing security policies or shadow routing rules.
+To systematically mitigate these vulnerabilities, Retrieval-Augmented Generation (RAG),
+pioneered by Lewis et al. [9], is integrated as a core architectural building block. By coupling
+the language model with a vector database containing indexed FortiOS REST API documen-
+tations, RAG forces the model’s outputs to remain strictly grounded. Empirical studies by
+Shajarian et al. [10] confirm that RAG-enhanced architectures substantially improve log anal-
+ysis, troubleshooting accuracy, and documentation query resolutions in network operations.
+Nonetheless, even with RAG, a language model remains a probabilistic engine. It cannot
+guarantee 100% syntactic correctness or rule compliance. For this reason, conversational
+AI alone is insufficient for security-critical environments. A hybrid architecture is required,
+separatingtheprobabilisticinterpretationinterfacefromadeterministicvalidatorthatenforces
+safety rules before the configuration is applied.
+2.6 Human-in-the-Loop (HITL) and Verification
+In high-security enterprise environments, fully autonomous execution without human verifi-
+cation represents a significant risk of unintended service disruption. The exhaustive analysis
+of major internet service failures by Oppenheimer et al. [2] demonstrates that human over-
+sight errors and blind automation are primary drivers of system outages. To ensure security,
+it is critical to position the administrator at the center of the decision-making cycle via an
+interactive Human-in-the-Loop (HITL) framework.
+The HITL architecture, as conceptualized by Gómez-Carmona et al. [11], embeds strict,
+interactive validation steps. Within our proposed system, the deterministic Python control
+plane first validates the syntax and compliance of the JSON intent generated by the AI. If
+20
+---PAGE 33---
+2.7. Comparative Analysis of Orchestration Models
+the payload is verified, the system generates a visual configuration diff and requests explicit
+administrative authorization before executing any changes on the physical firewall.
+Unstructured Intent
+(Probabilistic AI)
+Validation & Diff
+(Deterministic
+Plane)
+HITL Portal
+(Operator Review)
+JSON Payload Verifiable State
+Figure 2.2:Interactive Validation Pipeline incorporating Human-in-the-Loop Safeguards
+The interactive pipeline is shown in Figure 2.2. This design separates the conversational
+interpretation layer from the deterministic execution layer, ensuring that all mutations remain
+under human control. This ensures that the administrator is the ultimate authority, reviewing
+changes before they affect the live network.
+2.7 Comparative Analysis of Orchestration Models
+To establish the architectural advantages of our hybrid model, we conducted a systematic
+comparative analysis of existing network management approaches.
+Feature Static IaC (Ter-
+raform)
+Pure LLM Agents Our Hybrid IBN Pro-
+totype
+Interface Code / CLI Conversational UI Conversational UI with
+grounded context.
+Safety Model Deterministic
+schema valida-
+tion
+Probabilistic (high risk
+of hallucinations [3])
+Deterministic Python
+validation threshold with
+HITL [11].
+State Sync Static statefile
+(prone to drift)
+None (blind execution) Active live API synchro-
+nization and pre-execution
+snapshots.
+Recovery Manual destroy / ap-
+ply
+Destructive CLI actions Automated transaction
+rollback and verification.
+Table 2.2:Comparative Analysis of Network Orchestration Models
+As illustrated in Table 2.2, the proposed hybrid architecture successfully bridges the gap
+between the operational flexibility of conversational interfaces and the safety demands of
+21
+---PAGE 34---
+2.8. Chapter Conclusion
+enterprise firewalls. By leveraging strict automated code validation protocols similar to those
+explored by Sokolowski et al. [8], our prototype ensures that all state mutations are thoroughly
+validated and completely reversible.
+2.8 Chapter Conclusion
+In conclusion, this chapter has reviewed the evolution of network management paradigms and
+analyzed the systemic strengths and limitations of conversational AI. Existing research con-
+firms that modern security orchestration platforms cannot rely solely on probabilistic language
+models. The integration of conversational natural language processing with a deterministic
+control plane provides an essential safeguard to protect infrastructure integrity.
+These theoretical insights establish a clear path for designing the software architecture of
+our platform. The next chapter (Chapter 3: System Architecture and Design) will present the
+global functional design, structural software components, database schemas, and the detailed
+data flow models of our hybrid network orchestration prototype.
+22
+---PAGE 35---
+3
+System Design and Architecture
+3.1 Introduction
+Tobridgethegapbetweenconversationalagilityanddeterministicnetworkinfrastructureman-
+agement, a robust architectural foundation is required. This chapter details the conceptual,
+structural, and detailed design of our hybrid network orchestration prototype. We translate
+the theoretical principles of Intent-Based Networking (IBN) established in RFC 9315 [12] into
+a concrete software design, isolating the probabilistic natural language processing plane from
+the deterministic control plane. By grounding our validation rules in classical firewall policy
+anomaly analysis models such as those proposed by Al-Shaer and Hamed [13] and Yuan et
+al. [14], we ensure that the hybrid system remains mathematically sound, secure, and fail-safe.
+We begin by specifying the functional and non-functional requirements that govern sys-
+tem safety, functionality, and operational performance. We then present the multi-layered
+block architecture, illustrating the hard trust boundary separating untrusted AI models from
+verified execution modules. Next, we detail the NLP and RAG Ingestion Pipeline, showcas-
+ing the dynamic classifier and semantic vector database enrichment. Finally, we analyze the
+translation and execution engine, the security compliance safety gates, the transactional state
+23
+---PAGE 36---
+3.2. System Requirements and Specifications
+snapshot-rollback lifecycle, and the structural UML models mapping actor interactions and
+object-oriented class relationships.
+3.1.1 Transition from Theoretical Frameworks to Architecture
+The theoretical paradigms analyzed in Chapter 2—ranging from declarative Intent-Based Net-
+working (IBN) models to Human-in-the-Loop (HITL) control mechanisms—establish the con-
+ceptual requirements for our prototype. However, operationalizing these concepts on physical
+enterprise hardware requires a concrete software design. This section bridges the theoretical
+demand for validation gates and trust boundaries with the multi-tiered software architecture
+described below, detailing our routing modules, grounding engines, session state transition
+matrices, and UML class designs.
+3.2 System Requirements and Specifications
+Before translating design principles into software components, we define the strict specifica-
+tions that govern the system.
+3.2.1 Functional Requirements
+The functional requirements represent the core capabilities that the orchestrator must perform
+to assist the network administrator. They are structured into four main operational pillars:
+1.Conversational Interpretation (Read/Write Parsing):The system must ingest
+unstructured administrative prompts in English or French, classifying them dynami-
+cally into read queries (status, logs, active states) or configuration write intents (policy
+mutations, object management, system tasks).
+2.Contextual Entity Grounding:The system must dynamically reconcile ambiguous
+user references (e.g., “allow public traffic to the mail server”) with active, physical device
+elementsretrievedvialiveRESTAPIqueries(mapping“mailserver”toitscorresponding
+IP address object and UUID).
+3.Deterministic Safety Validation:The system must perform forward-looking com-
+pliance checks, verifying that no policy violates predefined corporate standards (e.g.,
+blocking HTTP/Telnet management or preventing public exposure of insecure ports).
+24
+---PAGE 37---
+3.3. Global System Architecture
+4.Transactional Lifecycle Management:Before mutating device states, the system
+must take a complete, localized configuration snapshot. Post-execution, it must verify
+the active configuration on the physical firewall. If verification fails or communication is
+severed, the system must automatically execute an inverse rollback to restore the firewall
+to its pre-state.
+3.2.2 Non-Functional Requirements
+Non-functionalrequirementsspecifythearchitecturalconstraints, qualitystandards, andsafety
+bounds of the implementation:
+•Predictability and Safety:No configuration modification may be executed directly
+by a probabilistic model. The AI-assisted interface is strictly restricted to intent parsing,
+leaving all execution, validation, and API interactions to deterministic Python logic.
+•Operator Oversight (HITL):All state-mutating transactions require explicit admin-
+istrative approval. The system must present a side-by-side unified delta diff of the
+planned changes before requesting confirmation.
+•Auditability and Log Integrity:Every session interaction, intermediate intent, vali-
+dation outcome, and API mutation must be recorded in an audit ledger using a rolling
+SHA-256 hash sequence to detect unauthorized modifications.
+•Latency and Responsiveness:The intent classification and parsing pipeline must
+execute within a low-latency threshold, ensuring that typical query resolutions complete
+in under three seconds to prevent administrator operational delay.
+3.3 Global System Architecture
+The core design principle of our system is the strict, multi-layered segregation of responsi-
+bilities, directly addressing the limitations of unconstrained language models highlighted in
+NetConfEval [3]. We partition the application into two isolated logical zones: theProba-
+bilistic Interpretation Plane(leveraging NLU models and semantic vector indexes) and
+theDeterministic Control Plane(implemented strictly in Python code using deterministic
+schemas).
+This structural segregation is illustrated in Figure 3.1.
+25
+---PAGE 38---
+3.4. The NLP and RAG Ingestion Pipeline
+User Natural
+Language Prompt
+Dynamic Classifier
+(agent/router.py)
+Vector
+Database
+(ChromaDB
+RAG)
+NLU Interpreter
+(nlu_interpreter.py)
+HARD TRUST BOUNDARY
+Entity Grounder
+(nlu_grounder.py)
+Safety &
+Compliance
+(compliance.py)
+HITL Portal
+(streamlit_app.py)
+Transactional
+Executor
+(executor.py)
+FortiGate
+Firewall
+(REST API)
+Write Ingestion JSON Intent
+Delta DiffAdmin Consent Live State Query
+Figure 3.1:Multi-Tiered Block Architecture representing the Hard Trust Boundary
+TheTrust Boundarydefines the exact line where probabilistic parsing terminates and
+deterministic verification begins. Once the NLU Interpreter generates a structured interme-
+diate representation, the AI model is completely suspended, and the Python control plane
+assumes full execution authority. This prevents LLM hallucinations from ever manifesting as
+physical device mutations.
+3.4 The NLP and RAG Ingestion Pipeline
+The system entry point is managed entirely within the Probabilistic Interpretation Plane.
+The user’s unstructured natural language prompt must be parsed and augmented with highly
+specific technical context before any system intent is generated.
+This ingestion flow is structured as a two-stage routing and context enrichment pipeline,
+as illustrated in Figure 3.2.
+26
+---PAGE 39---
+3.4. The NLP and RAG Ingestion Pipeline
+User Prompt
+(Conversational Text)
+Embedding Generator
+(nomic-embed-text)
+ChromaDB
+Vector Store
+Semantic Retriever
+(Top-kCon-
+text Blocks)
+Prompt Compiler
+(Base Prompt
++ Context)
+Mistral LLM
+(Structured Parsing)
+Raw Intent Schema
+(JSON Payload)
+Query Vector
+Similarity Search
+Enriched Text
+Generates
+Figure 3.2:NLP and RAG Ingestion and Context Enrichment Pipeline
+3.4.1 Dynamic Intent Routing Engine
+The Dynamic Router (agent/router.py) acts as the traffic controller of the system. To
+minimize conversational latency and prevent API bottlenecks, the router executes a two-stage
+evaluation:
+1.Stage-1 Direct Regex Match:A high-performance signature check evaluating the
+input string against direct operational patterns (e.g., “show policies” or “rollback”). If
+matched, it bypasses LLM computation entirely, routing the request instantly to the
+corresponding read wrapper.
+2.Stage-2 Semantic LLM Classifier:If the pattern is complex or conversational, a
+lightweight Mistral-small model classifies the prompt into one of five categories defined
+by the setC:
+C={READ,UPDATE,KNOWLEDGE,SECURITY_ANALYSIS,CONVERSATIONAL}
+(3.1)
+This classification set is enforced by the parsing router inagent/router.py, directing
+inputs to their respective specialized handling pipelines based on the resolved category.
+The routing separation and decision logic is visually formalized in the workflow shown in
+Figure 3.3.
+27
+---PAGE 40---
+3.4. The NLP and RAG Ingestion Pipeline
+Natural Lan-
+guage Input
+Intent
+Type?
+Read-Only
+Engine
+Mutation
+Pipeline
+Clarification
+Request
+Query Execute
+Unclear
+Clarify Loop
+Figure 3.3:Read/Write Separation and Intent Routing Workflow
+3.4.2 Retrieval-Augmented Generation (RAG) Enrichment
+For queries classified asKNOWLEDGEor requiring structural references, the system invokes the
+RAG pipeline:
+•Embeddings Generation:The user’s raw conversational input is vectorized utilizing
+the localnomic-embed-textmodel via Ollama.
+•Vector Store Query:The generated query vector is dispatched to a high-performance
+local ChromaDB instance, which indexes official FortiOS CLI manuals, best practices,
+and REST API documentation.
+•Similarity Matching:ChromaDB executes anL 2 distance similarity search, return-
+ing the top-kmost relevant document chunks. This minimization search is computed
+dynamically within the vector store database according to:
+k= arg min
+k
+∥⃗ vquery−⃗ vdoci∥2 (3.2)
+This mathematical comparison is executed by the local database engine, and the results
+are returned to the semantic retriever module (rag/retriever.py).
+•Prompt Assembly:The semantic retriever extracts the text blocks, appending them
+directly into the Mistral system context as an immutable grounding reference, ensuring
+accurate, documentation-aligned answers.
+28
+---PAGE 41---
+3.5. Translation and Execution Engine
+3.5 Translation and Execution Engine
+Onceawritemutationisrouted, thetranslationengineinagent/nlu_interpreter.pyprompts
+the Mistral model to translate the natural language command into a strictly structured
+RawIntentSchemaJSON payload, defining the intent type, policy IDs, and list of changes
+(deltas).
+3.5.1 Contextual Entity Grounding Algorithm
+Because human prompts refer to firewall interfaces, address objects, and policies conversa-
+tionally (e.g., “the public server” or “our internal switch”), the NLU interpreter outputs raw
+textual variables. The entity grounder (agent/nlu_grounder.py) reconciles these ambiguous
+references with live physical FortiOS object names.
+Reconciliation is executed using a normalized Levenshtein distance ratio. LetSuser repre-
+sent the extracted string parameter andSdevice represent the actual name of a live physical
+firewall object. The grounding engine, implemented in theagent/nlu_grounder.pymodule,
+calculates the similarity ratio as:
+LevenshteinRatio(Suser, Sdevice) = 1−Levenshtein(Suser, Sdevice)
+max(|Suser|,|Sdevice|) (3.3)
+An entity is matched and resolved successfully to a physical object if it satisfies the threshold
+constraint:
+LevenshteinRatio(Suser, Sdevice)≥0.85(3.4)
+This grounding check is programmatic logic within theNLUObjectGrounderclass. If multiple
+objects satisfy this condition, the grounder flags the parameter as ambiguous, halts execution,
+andraisesaGroundingIssue, whichtriggerstheconversationalclarificationloop. Theground-
+ing stages of NLU extraction, live device lookup, and intent normalization are illustrated in
+Figure 3.4, while the underlying programmatic logic is formalized in Algorithm 1.
+NLU Extraction
+(Raw Entities)
+Entity
+Reconciliation
+(Live API Lookup)
+Intent
+Normalization
+(Strict JSON)
+Resolved IDs
+Figure 3.4:Entity Grounding and Live Reconciliation Pipeline
+29
+---PAGE 42---
+3.5. Translation and Execution Engine
+Algorithm 1Dynamic Entity Grounding and Reconciliation
+Require:I raw (Parsed Raw NLU Intent),Fstate (Live Firewall State Query)
+Ensure:I grounded (Grounded Target Intent) orEerror (Grounding Ambiguity)
+1:O interfaces←FetchLiveInterfaces(Fstate)
+2:O addresses←FetchLiveAddresses(Fstate)
+3:foreachE entity inI raw.entitiesdo
+4:S match←∅
+5:foreachO obj inO interfaces∪Oaddresses do
+6:Score←ComputeLevenshteinRatio(E entity.name, Oobj.name)
+7:ifScore≥Threshold(0.85)then
+8:S match←Smatch∪{Oobj}
+9:end if
+10:end for
+11:if|S match|== 1then
+12:I grounded.entities←Igrounded.entities∪{Smatch[0]}
+13:else if|Smatch|>1then
+14:returnE error (“Ambiguous reference: multiple matches found”)
+15:else
+16:I grounded.entities←Igrounded.entities∪CreateNewObjectPlaceholder(Eentity)
+17:end if
+18:end for
+19:returnI grounded
+3.5.2 Operational Request Lifecycle
+The orchestration platform is architected as a sequential state machine. Every mutation
+request traverses a rigorous operational lifecycle designed to enforce security policies and
+maintain configuration integrity seamlessly.
+30
+---PAGE 43---
+3.6. Security, Compliance, and Transactional Validation
+Table 3.1:Lifecycle Phases of the Operational Request Pipeline
+Pipeline Phase Engineering Responsibility
+1. Ingestion Normalizing multi-turn conversations and maintaining session
+context.
+2. Routing Segregating API reads, RAG queries, and infrastructure muta-
+tions.
+3. Grounding Extracting configuration parameters and reconciling network
+entities.
+4. Validation Deterministic syntactic and semantic checking of the proposed
+state.
+5. HITL Review Presenting the exact execution diff for explicit administrator
+authorization.
+6. Pre-Execution Capturing the live configuration baseline (snapshot) prior to
+modification.
+7. Orchestration Dispatching serialized REST API payloads to the target Forti-
+Gate appliance.
+8. Verification Confirming the final operational state securely matches the in-
+tended design.
+3.6 Security, Compliance, and Transactional Validation
+Once an intent is fully grounded and translated, it is routed to the deterministic validation
+pipeline in the control plane before reaching the firewall API.
+Before any configuration payload reaches the execution layer, it is subjected to multi-tiered
+validation. TheValidation Engineenforces structural integrity, ensuring that IP addresses
+conformtoproperCIDRnotationsandportdefinitionsalignperfectlywithstandardprotocols.
+Concurrently, theCompliance Engineevaluates the administrative intent against strict
+organizational security postures.
+31
+---PAGE 44---
+3.6. Security, Compliance, and Transactional Validation
+Table 3.2:Multi-Tiered Validation and Security Enforcement Layers
+Validation Tier Mechanism Operational Focus
+Syntactic Layer Regex & Type Checking Validating IP formats, protocol num-
+bers, and API schema adherence.
+Semantic Layer Entity Reconciliation Ensuring requested objects and policy
+IDs exist dynamically on the firewall.
+Compliance Layer Policy Ruleset Evaluation Proactively preventing least-privilege
+violations (e.g., blocking 0.0.0.0/0 on
+SSH).
+3.6.1 Proactive Compliance and Safety Engine
+Theagent/compliance.pymodule implements a rule-based validation engine that enforces
+security best practices, protecting the enterprise perimeter from accidental administrative
+misconfigurations.
+We represent a planned firewall policy mutation asP, defined by:
+P=⟨Saddr, Daddr, Srcintf, Dstintf, Serv, Act⟩(3.5)
+WhereS addr is the source address,D addr is the destination address,Src intf is the source
+interface,Dst intf is the destination interface,Servis the list of permitted services, and
+Act∈{accept,deny}is the policy action. These compliance filters are implemented as deter-
+ministic check methods inside theagent/compliance.pymodule, executing static validation
+rules before any REST API update is prepared.
+The compliance engine enforces three core validation safety checks:
+1.Implicit Deny Enforcement (Any-to-Any Accept Prevention):If the planned
+policy permits traffic, it must not apply to global wildcards on both interfaces simulta-
+neously:
+Pvalid =⇒ ¬
+(
+(Act=accept)∧(Srcintf ="any")∧(Dstintf ="any")
+)
+(3.6)
+Violations of this rule trigger an immediate safety block within the compliance validator,
+throwing an exception and halting the orchestrator.
+32
+---PAGE 45---
+3.6. Security, Compliance, and Transactional Validation
+2.Insecure Interface Protocol Blocking:LetI protocols represent the administrative
+access protocols enabled on a target management interface. The system must prevent
+binding insecure legacy protocols:
+Accessvalid =⇒(Iprotocols∩{"HTTP","TELNET"}=∅)(3.7)
+If an operator attempts to enable these protocols on any interface, the validation engine
+rejects the transaction.
+3.Insecure Port Public Exposure Prevention:LetServ ports represent the TCP/UDP
+ports mapped to a policy. If a policy bridges a public interface (WAN) to an internal
+subnet, it must not expose highly vulnerable legacy services (such as SMB or RDP):
+Exposure valid =⇒
+(
+Src intf∈WAN=⇒(Servports∩{137,138,139,445,3389}=∅)
+)
+(3.8)
+3.6.2 Session Context and Conceptual State Transitions
+To maintain state consistency during multi-turn interactions (such as clarifications or awaiting
+administrative confirmation), the orchestrator manages a conceptual session lifecycle. Rather
+thanrelyingonastrict, hardware-boundfinitestatemachine(FSM)implementation, thisstate
+machine represents the logical, session-driven context transitions managed dynamically by the
+AgentSessionclass. These conceptual states and their permitted transitions are illustrated
+in Figure 3.5.
+To enable robust interaction, the system supports clarification continuity and partial intent
+persistence. When the user provides an incomplete or ambiguous intent (e.g., "Allow HTTP
+access" without specifying a destination address), the system transitions to theCLARIFYstate.
+The partial parameters are persisted in memory within theSessionContextclass (imple-
+mented inagent/session_context.py). Upon the next user turn, the input is merged with
+the existing context and re-grounded, ensuring deterministic multi-turn validation without
+forcing the administrator to restart the command sequence.
+33
+---PAGE 46---
+3.6. Security, Compliance, and Transactional Validation
+IDLE
+(Ready)
+CLARIFY
+(Awaiting
+details)
+CONFIRM
+(Awaiting
+HITL)
+ROLLBACK
+(Recovery)
+Ambiguous intent
+Details provided
+Grounded write
+Admin Cancel
+API Error / Verify Fail
+Success & Verify
+State Restored
+Figure 3.5:State Transition Diagram for multi-turn Administrator Sessions
+Thissessionlifecyclemanagesthesafetyinvariantthatthesessioncontextcannottransition
+fromIDLEdirectly to a device mutation without systematically transitioning through the
+validated and operator-reviewedCONFIRMstate.
+3.6.3 Lifecycle Management & Transactional Recovery
+To maintain database and network state alignment, the orchestrator encapsulates mutations
+within aTransactional Execution Loop, implementing a strict try-verify-rollback strategy:
+1.Pre-Mutation Snapshot:Captures the target configuration parameters (e.g., current
+ruleset ordering, specific policy parameters) and stores them in a localized stack buffer
+managed by theSnapshotStoreclass (agent/snapshot.py).
+2.Atomic Execution:Applies the API changes directly to the FortiOS REST endpoint.
+The REST client enforces a strict 5-second timeout window; connections exceeding this
+threshold are aborted to prevent session hanging.
+3.Active State Verification:Immediately issues a post-write query to read back the
+active state. If the returned state does not match the expected state delta, or if a
+connection loss occurs (monitored by HTTP heartbeat pings), the system marks the
+transaction as failed.
+4.Inverse Rollback:Restores the pre-mutation parameters captured in the snapshot,
+reverting the firewall to its last known stable state.
+34
+---PAGE 47---
+3.6. Security, Compliance, and Transactional Validation
+3.6.3.1 Operational Recovery Boundaries and Limitations
+While the transactional loop mitigates deployment risks, physical networking constraints in-
+troduce specific operational boundaries:
+•Rollback Connectivity Dependency: If a configuration mutation inadvertently sev-
+ers the physical network interface or administrative IP access used by the orchestrator
+(e.g., changing the management gateway to an unreachable route), the orchestrator will
+be unable to transmit the inverse rollback payload. In this scenario, the system flags a
+high-priority alarm on the console and halts, requiring manual physical or out-of-band
+console recovery.
+•State Persistence Boundaries: The snapshot buffer writes state directly to local
+disk (logs/snapshots.json) prior to any mutation. This guarantees that even if the
+management client or container crashes during execution, the rollback state survives and
+can be explicitly restored upon system recovery.
+This fail-safe validation and rollback process is visually modeled in Figure 3.6.
+Baseline
+Snapshot
+API
+Orchestration
+State
+Verification
+Match?
+Execute
+Rollback
+Confirm
+Success
+No Yes
+Restore
+Figure 3.6:Transactional Verification and Lifecycle Management Workflow
+3.6.4 Structured Audit and Integrity Logging
+To ensure all configuration changes are completely auditable and detectable against local
+tampering, the logging component writes transaction logs using a structured rolling hash
+chain. Each transaction recordTn is chained to the preceding recordTn−1 by computing:
+H(T n) =SHA-256
+(
+Tn.payload∥H(Tn−1)
+)
+(3.9)
+This validation formula, implemented in our audit logging wrapper, ensures that any unau-
+thorized manual edits to the local log files inlogs/audit.jsonlimmediately invalidate the
+sequential hash sequence. It provides local integrity verification for audit trails rather than
+absolute cryptographic non-repudiation or blockchain-grade guarantees.
+35
+---PAGE 48---
+3.7. UML Use Case and Structural Modeling
+3.7 UML Use Case and Structural Modeling
+To map the active interfaces and object relationships that control the transactional pipeline,
+we provide formal Unified Modeling Language (UML) notations of the system.
+The interaction boundaries between the system operator (network administrator), the hy-
+brid orchestration agent, and the physical FortiGate firewall are modeled in the global Use
+Case diagram shown in Figure 3.7.
+Administrator
+FortiGate Firewall
+Query System State
+(Read-Only RAG)
+Modify Security Configuration
+(Conversational Intent)
+Review Staged Delta Diff
+(HITL Portal)
+Perform Transactional Rollback
+(Recovery Stack)
+«include»
+«extend»
+Figure 3.7:UML Use Case Diagram representing Operator Interactions and System Boundaries
+The structural design of the Python backend is modeled in the UML Class Diagram shown
+in Figure 3.8. This diagram illustrates the properties, methods, and relationships of the active
+modules.
+36
+---PAGE 49---
+3.8. Chapter Conclusion
+AgentSession
+- conversation: list
+- _pending: ConfirmationState
+- ctx: SessionContext
+- snapshots: SnapshotStore
++ process(user_input: str): AgentResponse
++ has_pending(): bool
++ _route(user_input: str): AgentResponse
+«dataclass»
+RawIntentSchema
++ intent: NLUIntentType
++ confidence: NLUConfidence
++ policy_ids: List[int]
++ is_multi_policy: bool
++ deltas: List[NLUDelta]
++ policy_filter: dict
++ raw_input: str
++ missing_fields: List[str]
++ is_complete(): bool
+«dataclass»
+GroundedIntentSchema
++ raw: RawIntentSchema
++ policy_ids: List[int]
++ current_state: dict
++ grounded_deltas: List[NLUDelta]
++ is_valid: bool
++ is_noop: bool
++ noop_message: str
++ issues: List[GroundingIssue]
++ computed: dict
++ error_messages(): List[str]
+SnapshotStore
+- _snapshots: deque
++ capture(tool, resource, state, desc, fn): str
++ list(): List[OperationSnapshot]
++ get(op_id: str): OperationSnapshot
++ mark_rolled_back(op_id: str)
++ format_list(): str
+PolicyUpdateExecutor
+- _get: function
+- _update: function
+- _READONLY_FIELDS: set
++ execute(intent: UpdateIntent): ExecResult
+- _fetch(policy_id: int): dict
+- _check_noops(current: dict, deltas: list)
+- _apply_deltas(target: dict, deltas: list)
+Figure 3.8:UML Class Diagram representing structural relationships of Python Backend Classes
+The ‘AgentSession‘ context class acts as the central coordinator, orchestrating transitions
+between the conversational NLU layers and the deterministic components. The dynamic NLU
+parsing yields ‘RawIntentSchema‘ instances, which are immediately directed to the grounding
+engine to produce verified ‘GroundedIntentSchema‘ structures. Finally, mutations are man-
+aged by the ‘PolicyUpdateExecutor‘ coupled with the transactional recovery capabilities of
+the ‘SnapshotStore‘ to ensure fail-safe operation on the physical firewall appliance.
+3.8 Chapter Conclusion
+This chapter has detailed the architectural design, ingestion pipelines, and structural spec-
+ifications of the hybrid network orchestration prototype. By segregating the system into a
+probabilistic interpretation plane and a deterministic control plane, we enforce a strict trust
+boundary. We have modeled the NLP & RAG enrichment stages, established functional dia-
+grams using UML Use Cases, defined the detailed software components using class models, and
+mathematically formulated the safety gates that enforce corporate security postures. These
+designs establish a highly precise, verifiable blueprint for secure network automation.
+37
+---PAGE 50---
+4
+Implementation, Testing, and Validation
+4.1 Introduction
+The implementation, testing, and validation phase constitutes the practical realization of the
+Trust Boundary Architecture proposed in Chapter 3. While Chapter 3 established the con-
+ceptual and structural design of the hybrid FortiGate AI Agent, this chapter shifts the focus
+to engineering substance: the actual implemented Python codebase, its measurable techni-
+cal metrics, the precise algorithms governing the critical safety mechanisms, and a rigorous
+empirical validation campaign structured as a series of architectural proofs.
+This chapter is organized as follows. Section 4.2 describes the hardware and software envi-
+ronment used during development and validation. Section 4.3 provides a technical audit of the
+implemented codebase, covering directory structure, file metrics, and a detailed description of
+each core software component. Section 4.4 presents the actual implemented source code for
+the most architecturally significant algorithms. Section 4.5 contains the structured validation
+campaign, framing each test as anarchitectural proofthat empirically demonstrates a specific
+safety claim of the Trust Boundary Architecture. Section 4.6 demonstrates the Streamlit Secu-
+rity Operations Center interface and its integration with the agent backend. Section 4.7 details
+38
+---PAGE 51---
+4.2. Development and Testing Environment
+the containerized deployment architecture. Finally, Section 4.8 acknowledges the architectural
+limitations of the current implementation and Section 4.9 outlines future directions.
+4.2 Development and Testing Environment
+To validate the safety guarantees and performance parameters of the FortiGate AI Agent,
+a dedicated local engineering environment was established. Table 4.1 summarizes the full
+environment specification.
+Component Specification
+CPU AMD Ryzen 7 (8 cores, 16 threads)
+Memory 32 GB DDR4 RAM
+GPU NVIDIA GeForce RTX 4060 (8 GB VRAM)
+Operating System Windows 11 with WSL2 backend for containerized ser-
+vices
+Firewall Appliance Fortinet FortiGate VM running FortiOS v7.0.5 (local
+hypervisor). REST API exposed over HTTPS on the
+management interface at192.168.1.134.
+Runtime Language Python 3.11 (orchestration, NLU, validation, and UI
+layers)
+NLU Model mistral-small-latestvia Mistral API. Tempera-
+ture locked toT= 0.0for full reproducibility. Output
+constrained to strict JSON schema.
+Vector Database ChromaDB v0.4 (local persistent store for RAG
+pipeline)
+UI Framework Streamlit v1.28 (dark-mode SOC-style chat dash-
+board)
+HTTP Client httpxv0.25 (async-capable REST communication
+with FortiGate API)
+Test Framework pytestv7.4 (unit and integration test automation)
+Table 4.1:Development and Testing Environment Specifications
+The choice ofmistral-small-latestis deliberate. As established in Chapter 2, the role
+of the LLM in this architecture is strictly confined tointent parsing—transforming unstruc-
+tured natural language into a raw JSON schema. Setting temperature toT= 0.0eliminates
+39
+---PAGE 52---
+4.3. System Implementation and Technical Audit
+stochastic generation, making the NLU output deterministic for identical inputs during vali-
+dation runs. This reproducibility is essential for the empirical testing methodology applied in
+Section 4.5.
+4.3 System Implementation and Technical Audit
+4.3.1 Codebase Directory Structure and File Metrics
+The project codebase is strictly partitioned to enforce the trust boundary defined in Chapter
+3. All probabilistic components (NLU interpreting and RAG retrieval) are isolated from
+all deterministic components (validation, compliance, snapshot, and REST API execution).
+Table 4.2 audits the implemented files, detailing their relative path, measured line count, and
+primary architectural responsibility.
+40
+---PAGE 53---
+4.3. System Implementation and Technical Audit
+File Relative Path Lines Architectural Responsibility
+agent/core.py 2,417 Master session orchestrator. Coordinates
+routing classification, session state ma-
+chine transitions, grounding, compliance
+pre-checks, HITL confirmation, and post-
+execution verification.
+agent/compliance.py 450 Proactive deterministic compliance engine.
+Evaluates proposed configuration changes
+against a static ruleset (POL-001 through
+POL-005, INTF-001) before any API call is
+dispatched.
+agent/nlu_interpreter.py 765 NLU layer. Constructs and dispatches Mis-
+tralAPIprompts, thenparsesandnormalizes
+the returned JSON output via markdown-
+fence extraction and structural normaliza-
+tion.
+agent/nlu_grounder.py 932 Contextual grounding engine. Resolves raw
+NLU-extracted entity names and IDs against
+live FortiGate API state using exact match-
+ing and Levenshtein distance scoring.
+agent/nlu_schema.py 112 Shared data structures. Declares
+RawIntentSchema,GroundedIntentSchema,
+NLUDelta, andGroundingIssuedataclasses.
+agent/router.py 598 Two-stage intent router. Stage 1 applies de-
+terministic regex filters for high-confidence
+patterns. Stage 2 dispatches ambiguous in-
+puts to the LLM-based semantic classifier.
+agent/session_context.py 401 Short-term conversational memory manager.
+Tracks active entity focus, sliding-window en-
+tity stack, and performs pronoun resolution
+and clarification-state management.
+agent/snapshot.py 544 Transactional safety layer. Captures pre-
+mutation resource state via HTTP GET, per-
+sists snapshots to disk, and executes PUT-
+based rollback restoration.
+agent/validator.py 578 Structural input validator. Verifies IP ad-
+dress formats, subnet validity, CIDR legality,
+port range correctness, and interface lockout
+hazard detection.
+agent/tools.py 1,480 FortiGate REST API wrapper. Encapsulates
+all GET, POST, PUT, and DELETE API
+calls across policy, address, interface, and
+system resource endpoints.
+audit/logger.py 156 Cryptographic audit logger. Writes append-
+only JSONL entries with rolling SHA-
+256 hash chains, creating a tamper-evident
+ledger.
+audit/report.py 101 Audit report and integrity verifier. Re-
+computes hash chain and flags any deleted,
+altered, or reordered log entries.
+streamlit_app.py 210 SOC-style Streamlit dashboard. Renders
+conversation UI, live resource meters, Forti-
+Gate connection indicator, and delta diff con-
+firmations.
+Table 4.2:FortiGate AI Agent Codebase Structure and Metrics
+41
+---PAGE 54---
+4.3. System Implementation and Technical Audit
+The total codebase spans approximately8,744 linesof production Python, distributed
+across 13 primary modules. This figure excludes test suites, documentation files, and Docker
+configuration. The largest module isagent/core.pyat 2,417 lines, reflecting the architectural
+complexity of the session state machine, which must coordinate between all other modules
+while maintaining full transactional integrity. The second largest isagent/tools.pyat 1,480
+lines, representing the comprehensive coverage of the FortiGate v7.0.5 REST API surface.
+4.3.2 Natural Language Understanding and Intent Extraction
+The NLU interpreter module (agent/nlu_interpreter.py) serves as the sole and tightly
+controlled interface between the user’s natural language input and the deterministic processing
+pipeline. It is designed with a fundamental engineering constraint:the LLM output is never
+trusted directly.
+The module operates in three sequential stages:
+1.Prompt Construction:The interpreter builds a structured prompt that embeds the
+user’s message alongside the current FortiGate device context (available policies, inter-
+faces, address objects, and service groups fetched via live REST API). Injecting live
+context is a critical security measure: it bounds the LLM’s operational vocabulary to
+actually existing objects, reducing the probability of hallucinated references.
+2.JSON Extraction (_extract_json()):The raw API response is not trusted to be
+valid JSON. The extraction algorithm first searches for markdown code fences (“‘json
+... “‘) using a regular expression scan, since the Mistral model wraps its output in
+such blocks. If a fence is found, the content is extracted. If no fence exists, the algorithm
+attempts to locate the first{and last}characters to carve out the JSON object. This
+dual-path extraction is necessary for robustness across LLM output variations.
+3.Structural Normalization (_normalize_dict()):The extracted JSON is mapped
+through a normalization table that handles case variations, French synonyms (“activer”
+→enable, “désactiver”→disable), and field aliases (src→srcaddr). After normal-
+ization, the dict is deserialized into the strongly-typedRawIntentSchemadataclass. Any
+field mismatch or missing required key raises aNLUParseError, which is caught by the
+orchestrator and surfaced to the user as a clarification request.
+42
+---PAGE 55---
+4.3. System Implementation and Technical Audit
+4.3.3 Contextual Entity Grounding and Normalization
+The grounding engine (agent/nlu_grounder.py) constitutes the primary architectural barrier
+against LLM hallucinations. Once the NLU layer produces aRawIntentSchema, the grounding
+engine validates every extracted entity (policy IDs, policy names, interface names, address
+group names) against the actual, live state of the FortiGate appliance.
+The grounding algorithm proceeds as follows for a policy reference:
+1.APIQuery:AdirectHTTPGETrequestisdispatchedto/api/v2/cmdb/firewall/policy/<id>.
+A 404 response conclusively proves the entity does not exist.
+2.Name Resolution (Fuzzy Matching):If a name is provided instead of an ID, the
+engine fetches the full policy list via/api/v2/cmdb/firewall/policy/and scores each
+candidate against the extracted name using Levenshtein edit distance [15]. A match
+is only accepted if the edit distance is below a defined thresholdandthe normalized
+candidate names are unique (no ambiguous matches).
+3.Issue Registration:Any failed resolution (404 response, no match found, or multi-
+ple matches above threshold) is recorded as aGroundingIssueand appended to the
+GroundedIntentSchema.issueslist. The orchestrator inspects this list after grounding
+andblocksexecutionifanyunresolvedissueofkind=“not_found”orkind=“ambiguous”
+is present.
+Critically, the grounding enginenever raises exceptions to the caller. Its contract is to
+always return a fully populatedGroundedIntentSchema, with theis_validflag set toFalse
+if any blocking issue was encountered. This guarantees that the orchestrator’s control flow
+remains deterministic even in the face of API failures or malformed LLM output.
+4.3.4 Deterministic Compliance and Security Gate
+The proactive compliance engine (agent/compliance.py) is the system’s second line of de-
+fense. After grounding successfully resolves all entities, the compliance engine evaluates the
+proposedconfiguration payload—before any write request is dispatched—against a database of
+security rules. This evaluation involveszero LLM participation: it is purely deterministic
+Python logic operating on strongly-typed data structures.
+The implemented ruleset covers six primary compliance checks:
+43
+---PAGE 56---
+4.3. System Implementation and Technical Audit
+•POL-001 (Wildcard Accept):Blocks any policy creation or update that combines
+srcaddr=any,dstaddr=any, andaction=accept. This prevents the inadvertent cre-
+ation of open firewall rules.
+•POL-002(InsecureProtocolExposure):BlockspoliciesthatpermitTelnet(TCP/23)
+traffic with anacceptaction, enforcing the use of SSH as the sole remote management
+protocol.
+•POL-003 (Inbound Internet Exposure):Flags policies that accept traffic from a
+WAN/untrusted interface to any internal destination without explicit service restriction,
+raising aHIGHseverity finding.
+•POL-004 (Disabled Logging):Raises aMEDIUMseverity warning on any policy with
+logtraffic=disable, since disabled logging violates audit traceability requirements.
+•POL-005 (Shadowed Policy):Detects DENY rules that are made unreachable by
+a broader, preceding ACCEPT rule. A shadowed DENY constitutes a silent security
+failure and is ratedHIGH.
+•INTF-001 (Insecure Management):Blocks any interface update that enableshttp
+ortelnetas management access protocols, enforcing HTTPS/SSH-only management.
+If one or more rules are violated, the engine returns a list ofComplianceFindingobjects.
+Findings ratedHIGHorCRITICALcause the orchestrator to halt the transaction entirely, dis-
+playing a blocking alert to the operator.MEDIUMfindings generate a non-blocking advisory
+that is displayed alongside the delta diff for operator awareness.
+4.3.5 Conversational Session State and Pronoun Resolution
+State tracking is managed byagent/session_context.py, which implements a short-term
+memory machine for the conversation. The module maintains three primary data structures:
+1.Active Focus Stack:A stack of recently referenced resource entities (policies, inter-
+faces, addresses), with timestamps. The most recently referenced entity is the “active
+focus” and is used for pronoun resolution.
+2.Topic Channel:The current administrative domain (policy,interface,address, or
+system), used to scope ambiguous references.
+44
+---PAGE 57---
+4.3. System Implementation and Technical Audit
+3.Clarification State:A flag and associated pending intent that is set when the system
+requires user clarification (e.g., due to a grounding ambiguity). The clarification state is
+checked at the beginning of each turn to route the user’s response to the correct handler.
+Pronoun resolution operates by examining the user’s input for implicit references (“it”,
+“that”, “this policy”, “the same one”) and substituting the active focus entity. To protect
+conversational flow from hijacking, a semantic compatibility check is performed: if the user
+responds to a pending clarification with an entirely unrelated command, the system detects the
+topic mismatch, abandons the clarification state, and re-routes the new command normally.
+4.3.6 Transaction Snapshot Store and Rollback Engine
+To guarantee transactional safety, the snapshot engine (agent/snapshot.py) implements a
+pre-state capture protocol. Before any validated write operation is committed, the engine:
+1. Generates a unique, 8-character hexadecimalop_idfor the operation (e.g.,A1B2C3D4).
+2. DispatchesanHTTPGETtothetargetresourceendpoint(/api/v2/cmdb/firewall/policy/<id>)
+to retrieve the exact current JSON configuration.
+3. Persists the pre-state JSON payload to disk in a structured snapshot store, keyed by
+op_id.
+4. Records the snapshot metadata (timestamp, operation type, target resource,op_id) in
+the audit log chain.
+If the operator subsequently requests a rollback (rollback lastorrollback A1B2C3D4),
+the engine retrieves the persisted pre-state payload and re-posts it to the target endpoint via
+HTTP PUT, restoring the firewall resource to its exact pre-mutation state.
+A critical architectural constraint governs rollback eligibility:CREATE operations are
+not reversible via the snapshot engine. Rolling back a resource creation would dispatch
+a DELETE request, which could silently orphan other policy objects or references that were
+created in subsequent operations. Instead, the system explicitly blocks rollback of CREATE
+operations and instructs the operator to perform manual deletion, ensuring no silent state
+corruption.
+45
+---PAGE 58---
+4.4. Core Algorithm Implementation Listings
+4.3.7 Cryptographic Integrity and Audit Log Chain
+Traceabilityisguaranteedbythecryptographicloggingmechanismimplementedinaudit/logger.py.
+Every user interaction, intent classification decision, grounding result, compliance check out-
+come, and API mutation is recorded in an append-only JSON Lines file (audit.jsonl).
+To prevent log tampering, each record includes aprev_hashfield containing the SHA-256
+digest of the preceding line. The hash of the current record is computed over the concatenation
+of its payload andprev_hash:
+H(T n) = SHA-256(Payload n∥H(Tn−1))(4.1)
+whereH(T 0) =“GENESIS” (the immutable genesis string for the first record). This rolling
+hash chain construction ensures that any modification to a historical record—whether a char-
+acter alteration, a line deletion, or a record reordering—immediately propagates a chain break
+detectable by theaudit/report.pyintegrity checker.
+4.4 Core Algorithm Implementation Listings
+This section presents the actual implemented source code for the three most architecturally
+significant algorithms: the contextual entity grounding engine, the deterministic compliance
+gate (shadowed policy detection), and the cryptographic hash chain logger. These listings are
+extracted directly from the production codebase without modification.
+4.4.1 Algorithm 1: Contextual Entity Grounding Engine
+Listing 4.1 presents the core grounding orchestration function fromagent/nlu_grounder.py.
+TheGroundedIntentSchemadataclass(lines1–7)encapsulatesthecompleteresultofaground-
+ing operation, separating the raw NLU output from the validated, live-state-reconciled entities.
+Theground()function (lines 9–18) dispatches to intent-specific sub-grounters while maintain-
+ing a strict no-exception contract, which is essential for deterministic orchestrator behavior.
+1@ d a t a c l a s s
+2classG r o u n d e d I n t e n t S c h e m a :
+3" " "
+4R a w I n t e n t S c h e m a after gr ou nd in g against live Fo rt iG at e state .
+5All fields po pu la te d by ground () ; never mutates the input schema .
+6" " "
+7raw : R a w I n t e n t S c h e m a
+46
+---PAGE 59---
+4.4. Core Algorithm Implementation Listings
+8po li cy _i d : Optional [int] = None
+9c u r r e n t _ s t a t e :dict= field ( d e f a u l t _ f a c t o r y =dict)
+10g r o u n d e d _ d e l t a s : List [ NLUDelta ] = field ( d e f a u l t _ f a c t o r y =list)
+11is_noop :bool= False
+12is_valid :bool= False
+13issues : List [ G r o u n d i n g I s s u e ] = field ( d e f a u l t _ f a c t o r y =list)
+14
+15defh a s _ e r r o r s ( self ) ->bool:
+16return any( i . kindin( " no t_ fo un d " , " am bi gu ou s " , " a p i _ u n a v a i l a b l e " )
+17foriinself . issues )
+18
+19defground ( schema : R a w I n t e n t S c h e m a ) -> G r o u n d e d I n t e n t S c h e m a :
+20" " "
+21Ground a R a w I n t e n t S c h e m a against live Fo rt iG at e state .
+22Contract : Never raises . Never mutates input schema .
+23Returns a G r o u n d e d I n t e n t S c h e m a with is_valid = False on any error .
+24" " "
+25result = G r o u n d e d I n t e n t S c h e m a ( raw = schema )
+26issues : List [ G r o u n d i n g I s s u e ] = []
+27intent = schema . intent
+28
+29ifintentin( N L U I n t e n t T y p e . UPDATE_POLICY , N L U I n t e n t T y p e . D E L E T E _ P O L I C Y )
+:
+30_ g r o u n d _ p o l i c y _ r e f ( schema , result , issues )
+31if notresult . h a s _ e r r o r s ()andintent == N L U I n t e n t T y p e .
+U P D A T E _ P O L I C Y :
+32if notresult . c u r r e n t _ s t a t e :
+33issues . append ( G r o u n d i n g I s s u e (
+34field = " c u r r e n t _ s t a t e " , kind = " a p i _ u n a v a i l a b l e " ,
+35message = " Could not fetch current policy state "
+36" for delta v a l i d a t i o n . " ,
+37) )
+38else:
+39_ g r o u n d _ u p d a t e _ d e l t a s ( schema , result , issues )
+40elifintent == N L U I n t e n t T y p e . E N A B L E _ P O L I C Y :
+41_ g r o u n d _ p o l i c y _ r e f ( schema , result , issues )
+42elifintent == N L U I n t e n t T y p e . C R E A T E _ P O L I C Y :
+43_ g r o u n d _ c r e a t e _ i n t e r f a c e s ( schema , result , issues )
+44
+45result . issues = issues
+46result . is_valid =notresult . h a s _ e r r o r s ()
+47
+---PAGE 60---
+4.4. Core Algorithm Implementation Listings
+47returnresult
+Listing 4.1:Contextual Entity Grounding Orchestrator (nlu_grounder.py)
+The architectural significance of this listing is clear: theground()function is theonly
+code path through which NLU output transitions into the deterministic execution zone. Its
+no-exception contract and theis_validflag mechanism replace exception-based control flow
+with a data-driven validation pattern, which is both safer and more auditable.
+4.4.2 Algorithm2: DeterministicComplianceGate(ShadowedPol-
+icy Detection)
+Listing4.2presentstheimplementationofcompliancerulePOL-005fromagent/compliance.py.
+This algorithm performs a quadratic-time scan of the active policy list to identify DENY rules
+that are made logically unreachable by broader, earlier ACCEPT rules—a classical firewall
+policy anomaly category first formally analyzed by Al-Shaer and Hamed [13].
+1def_ c h e c k _ p o l 0 0 5 ( policies :list) -> List [ C o m p l i a n c e F i n d i n g ]:
+2" " " POL -005: Shadowed policy - a DENY rule u n r e a c h a b l e due to
+3a preceding , broader ACCEPT rule . Severity : HIGH . " " "
+4findings = []
+5fori , pin en um er at e( policies ) :
+6ifp . get ( " action " ) != " deny " :
+7continue
+8p_srcs = _ a d d r _ n a m e s (p , " srcaddr " )
+9p_dsts = _ a d d r _ n a m e s (p , " dstaddr " )
+10p_svcs = _ s v c _ n a m e s ( p )
+11p_sints = _ i n t f _ n a m e s (p , " srcintf " )
+12p_dints = _ i n t f _ n a m e s (p , " dstintf " )
+13
+14forearlierinpolicies [: i ]:
+15ifearlier . get ( " action " ) != " accept " :
+16continue
+17ifearlier . get ( " status " ) == " disable " :
+18continue
+19e_srcs = _ a d d r _ n a m e s ( earlier , " srcaddr " )
+20e_dsts = _ a d d r _ n a m e s ( earlier , " dstaddr " )
+21e_svcs = _ s v c _ n a m e s ( earlier )
+22e_sints = _ i n t f _ n a m e s ( earlier , " srcintf " )
+23e_dints = _ i n t f _ n a m e s ( earlier , " dstintf " )
+24
+48
+---PAGE 61---
+4.4. Core Algorithm Implementation Listings
+25# A DENY is shadowed iff the ACCEPT rule ’s scope
+26# is a superset of the DENY rule ’s scope on all d i m e n s i o n s
+27sa me _p at h = (
+28( p_sints <= e_sintsor" any "ine_sints )and
+29( p_dints <= e_dintsor" any "ine_dints )and
+30( " all "ine_srcsorp_srcs <= e_srcs )and
+31( " all "ine_dstsorp_dsts <= e_dsts )and
+32( " ALL "ine_svcsorp_svcs <= e_svcs )
+33)
+34ifsa me _p at h :
+35findings . append ( C o m p l i a n c e F i n d i n g (
+36rule_id = " POL -005 " ,
+37severity = " HIGH " ,
+38finding = (
+39f " DENY policy ( ID { p . get ( ’ policyid ’) }) is "
+40f " shadowed by earlier ACCEPT policy "
+41f " ( ID { earlier . get ( ’ policyid ’) }) and will "
+42f " never be ev al ua te d by the firewall engine . "
+43) ,
+44) )
+45break# One finding per shadowed rule is s u f f i c i e n t
+46returnfindings
+Listing 4.2:Compliance Rule POL-005: Shadowed Policy Detection (compliance.py)
+The subset check on lines 30–35 uses Python’s built-in set comparison (<=) to test whether
+all dimension sets of the DENY rule are subsets of the corresponding ACCEPT rule dimen-
+sions. The special-case handling for wildcard values ("any","all","ALL") correctly models
+FortiGate’s built-in “any” address object and “ALL” service group, which match every possible
+address and service respectively.
+4.4.3 Algorithm 3: Rolling SHA-256 Audit Hash Chain
+Listing 4.3 presents the cryptographic logging implementation fromaudit/logger.py. Each
+log()call computes the hash of the current entry concatenated with the previous entry’s
+hash, as specified by Equation (4.1), before appending the record to theaudit.jsonlfile in
+an append-only mode.
+1importhashlib , json
+2frompathlibimportPath
+3
+49
+---PAGE 62---
+4.4. Core Algorithm Implementation Listings
+4A U D I T _ F I L E = Path ( " logs / audit . jsonl " )
+5GENESIS = " GENESIS "
+6
+7def_ l a s t _ h a s h () ->str:
+8" " " Read the hash field from the last audit entry , or GENESIS . " " "
+9if notA U D I T _ F I L E . exists ()orA U D I T _ F I L E . stat () . st_size == 0:
+10returnGENESIS
+11withA U D I T _ F I L E .open( " r " , encoding = " utf -8 " )asfh :
+12la st _l in e = fh . re ad li ne s () [ -1]
+13returnjson . loads ( la st _l in e ) . get ( " hash " , GENESIS )
+14
+15deflog ( e v e n t _ t y p e :str, payload :dict) -> None :
+16" " "
+17Append a tamper - evident entry to the audit ledger .
+18Each entry stores pr ev _h as h and the SHA -256 hash of
+19( json ( payload ) + pr ev _h as h ) .
+20" " "
+21pr ev _h as h = _ l a s t _ h a s h ()
+22r a w _ c o n t e n t = json . dumps ( payload , so rt _k ey s = True ) + pr ev _ ha sh
+23e n t r y _ h a s h = hashlib . sha256 ( r a w _ c o n t e n t . encode () ) . he xd ig e st ()
+24
+25entry = {
+26" e v e n t _ t y p e " : event_type ,
+27" payload " : payload ,
+28" pr ev _h as h " : prev_hash ,
+29" hash " : entry_hash ,
+30}
+31withA U D I T _ F I L E .open( " a " , encoding = " utf -8 " )asfh :
+32fh . write ( json . dumps ( entry ) + " \ n " )
+Listing 4.3:Rolling SHA-256 Audit Hash Chain (audit/logger.py)
+The integrity verification function inaudit/report.pyre-reads the file sequentially, re-
+computes each hash from its payload andprev_hash, and compares it to the storedhashfield.
+Any discrepancy—whether from a deleted record, an altered timestamp, or a modified payload
+byte—is immediately flagged, providing a forensic tamper-evidence capability comparable to
+a blockchain-style ledger.
+50
+---PAGE 63---
+4.5. System Validation and Architectural Proofs
+4.5 System Validation and Architectural Proofs
+Rather than performing superficial feature demonstrations, the validation campaign for the
+FortiGate AI Agent is structured as a series ofarchitectural proofs: each test case targets a
+specific formal claim of the Trust Boundary Architecture, documents the exact system inputs,
+internal state transitions, REST API payloads, and final outputs, and provides empirical
+evidence that the claimed architectural guarantee holds under the tested conditions.
+4.5.1 Proof 1: Hallucination Prevention via the Grounding Engine
+Architectural Claim:The system must prevent any execution request from reaching the
+FortiGate REST API if it references a resource identifier that does not exist on the live device,
+regardless of whether the identifier was generated by the LLM or entered by the operator.
+Test Input:
+1User : enable policy 9999
+NLU Interpretation:The Mistral model receives the user’s message along with the cur-
+rent live context (which lists only policies 1, 2, 3, and 4 as existing). Thenlu_interpreter.py
+receives the following structured response from the model:
+1{
+2" intent ": " e n a b l e _ p o l i c y " ,
+3" po li cy _i d ": 9999 ,
+4" p o l i c y _ n a m e ": null
+5}
+Grounding Engine Check:Thenlu_grounder.pycalls_ground_policy_ref(), which
+dispatches an HTTP GET to the FortiGate appliance:
+1GET / api / v2 / cmdb / firewall / policy /9999 HTTP /1.1
+2Host : 1 9 2 . 1 6 8 . 1 . 1 3 4
+3A u t h o r i z a t i o n : Bearer < api_token >
+4
+5HTTP /1.1 404 Not Found
+6Content - Type : a p p l i c a t i o n / json
+7{" h t t p _ s t a t u s ": 404 , " error ": -3 , " message ": " Object not found "}
+The 404 response triggers the registration of aGroundingIssue:
+1G r o u n d i n g I s s u e (
+2field = " po li cy _i d " ,
+51
+---PAGE 64---
+4.5. System Validation and Architectural Proofs
+3kind = " no t_ fo un d " ,
+4message = " Policy ID 9999 does not exist on this Fo rt iG at e ."
+5)
+Orchestrator Decision:TheGroundedIntentSchema.has_errors()method returns
+True(duetokind="not_found"), settingis_valid=False. Theorchestratorchecksis_valid
+before dispatching any PUT or POST command. Sinceis_valid=False, the execution path
+is never entered. Instead, the orchestrator returns a clarification request to the operator.
+System Response to Operator:
+1[ AGENT ] I could not locate policy ID 9999 on the co nn ec te d Fo rt i Ga te .
+2Av ai la bl e policy IDs : [1 , 2 , 3 , 4].
+3Please specify a valid policy ID or name .
+Proof Result:No HTTP PUT or POST was dispatched. The hallucinated or invalid
+identifier was trapped at the trust boundary. The grounding guarantee holds:non-existent
+entities cannot reach the execution layer.
+Figure 4.1:Grounding Engine Rejecting a Non-Existent Policy ID (Proof 1)
+4.5.2 Proof 2: Deterministic Safety via the Compliance Gate
+Architectural Claim:The system must intercept and block insecure configuration com-
+mands before they are dispatched to the physical firewall, overriding any LLM-generated
+intent, and must do so without relying on the LLM to make the safety determination.
+Test Input:
+1User : create a policy from any to any allowing all traffic
+52
+---PAGE 65---
+4.5. System Validation and Architectural Proofs
+NLU Interpretation:The model correctly parses the user’s intent into the following
+RawIntentSchema:
+1{
+2" intent ": " c r e a t e _ p o l i c y " ,
+3" c r e a t e _ p a r a m s ": {
+4" name ": " any - to - any - accept " ,
+5" srcintf ": " any " ,
+6" dstintf ": " any " ,
+7" srcaddr ": " all " ,
+8" dstaddr ": " all " ,
+9" service ": " ALL " ,
+10" action ": " accept " ,
+11" status ": " enable "
+12}
+13}
+Grounding:The CREATE intent does not require entity grounding on a pre-existing
+policy (there is no ID to validate). Grounding checks for interface and address object validity.
+Since"any"and"all"are built-in FortiGate objects, grounding passes withis_valid=True.
+ComplianceGateCheck:Thecompliance.pyengineevaluatestheproposedcreate_params
+payload against the ruleset:
+1Checking POL -001: srcaddr = all , dstaddr = all , action = accept
+2--> CRITICAL VI OL AT IO N DETECTED
+3C o m p l i a n c e F i n d i n g (
+4rule_id = " POL -001" ,
+5severity = " CRITICAL " ,
+6finding = " Policy allows any source to any d e s t i n a t i o n with "
+7" ACCEPT action . This creates an open firewall rule "
+8" and violates the minimum - access security pr in c ip le ."
+9)
+Orchestrator Decision:The compliance engine returns aCRITICALfinding. The or-
+chestrator’s compliance check logic evaluates the maximum finding severity. Upon detecting
+CRITICAL, the orchestrator immediately halts the transaction pipeline. No HTTP POST is
+dispatched.
+System Response to Operator:
+1[ BLOCKED ] C o m p l i a n c e Engine : CRITICAL Vi ol at io n
+2Rule POL -001: This op er at io n would create an u n r e s t r i c t e d
+3accept - all firewall policy . The action has been blocked to
+53
+---PAGE 66---
+4.5. System Validation and Architectural Proofs
+4prevent a complete bypass of the firewall security posture .
+Proof Result:The compliance engine, operating with zero LLM involvement, determin-
+istically blocked an insecure command. The physical firewall state was not modified.
+Figure 4.2:Compliance Engine Blocking a CRITICAL Wildcard Policy Creation (Proof 2)
+4.5.3 Proof 3: Transactional Integrity via Rollback and HITL Con-
+firmation
+Architectural Claim:The operator must maintain ultimate authority over write operations
+through explicit HITL confirmation, and any committed mutation must be cleanly reversible
+to its exact pre-mutation state via the snapshot rollback engine.
+Test Input:
+1User : disable NAT on policy 4
+NLU Interpretation:
+1{
+2" intent ": " u p d a t e _ p o l i c y " ,
+3" po li cy _i d ": 4 ,
+4" deltas ": [{" field ": " nat " , " ne w_ va lu e ": " disable "}]
+5}
+Grounding:The grounder confirms policy 4 exists (HTTP 200) and fetches the current
+state:
+1c u r r e n t _ s t a t e [" nat "] = " enable " // Fo rt iG at e live value
+2g r o u n d e d _ d e l t a : {" field ": " nat " , " ol d_ va lu e ": " enable " , " ne w_ va lu e ": "
+disable "}
+54
+---PAGE 67---
+4.5. System Validation and Architectural Proofs
+3is_valid = True
+Compliance Check:Thenatfield modification does not trigger any compliance rule.
+Zero findings. The orchestrator proceeds to the HITL gate.
+HITL Visual Delta Diff:The Streamlit interface renders the following confirmation
+pane, displaying the exact proposed change as a unified diff before prompting the operator:
+1Policy 4 Proposed Changes :
+2
+3- " nat ": " enable "
+4+ " nat ": " disable "
+5
+6[ CONFIRM ] [ CANCEL ]
+Snapshot Capture:The operator clicks CONFIRM. Immediately prior to dispatching
+the PUT,snapshot.pycaptures the pre-state and persists it:
+1op_id : A1B2C3D4
+2snapshot : {" policyid ": 4 , " nat ": " enable " , ... < full policy JSON > }
+3stored at : logs / sn ap sh ot s / A1B2C3D4 . json
+REST API Execution:
+1PUT / api / v2 / cmdb / firewall / policy /4 HTTP /1.1
+2Host : 1 9 2 . 1 6 8 . 1 . 1 3 4
+3Content - Type : a p p l i c a t i o n / json
+4{" nat ": " disable "}
+5
+6HTTP /1.1 200 OK
+7{" h t t p _ s t a t u s ": 200 , " revision ": "..."}
+Rollback Request:
+1User : rollback last
+The engine loadsA1B2C3D4.jsonand re-dispatches the pre-state:
+1PUT / api / v2 / cmdb / firewall / policy /4 HTTP /1.1
+2{" nat ": " enable " , ... < full pre - state payload > }
+3
+4HTTP /1.1 200 OK -- Policy restored to pre - mutation state
+55
+---PAGE 68---
+4.6. Streamlit Security Operations Center Interface
+Proof Result:The operator confirmed the change explicitly. The pre-state was captured
+before execution. The rollback perfectly restored the exact prior configuration. Transactional
+integrity was maintained end-to-end.
+Figure 4.3:Visual Delta Diff Confirmation Pane and Rollback Recovery (Proof 3)
+4.6 Streamlit Security Operations Center Interface
+4.6.1 Interface Architecture and Design Rationale
+The administrator interacts with the FortiGate AI Agent through a Streamlit-based Security
+Operations Center (SOC) dashboard, implemented instreamlit_app.py. Streamlit was se-
+lected for its native Python integration—which eliminates any client-server protocol barrier
+between the UI layer and the agent backend—and for its stateful session model, which maps
+cleanly onto theAgentSessionobject maintained byagent/core.py.
+The UI is implemented in dark mode with a professional#1E1E2Ebackground color, custom
+CSSinjectionfortypographyandcomponentstyling, andafull-widthchatinterface. Alldesign
+decisions are motivated by SOC usability principles: high contrast for readability under low-
+light conditions, minimal visual noise, and unambiguous alert states.
+4.6.2 Interface Components
+The dashboard is structured into three functional regions:
+1.Sidebar (Left):Displays a real-time FortiGate connection status indicator (green/red
+badge), a device information panel (hostname, firmware version, serial number fetched
+56
+---PAGE 69---
+4.7. Containerized Deployment Architecture
+via/api/v2/monitor/system/status/), and live resource meters tracking agent pro-
+cess CPU and memory usage using thepsutillibrary.
+2.Main Chat Panel:Renders the conversation history as a scrollable message thread,
+clearly distinguishing user messages (right-aligned, accent color) from agent responses
+(left-aligned, neutral). Compliance block alerts are rendered as full-width red banners.
+Advisory warnings are rendered as yellow banners.
+3.Delta Diff Confirmation Pane:When a write operation reaches the HITL gate,
+the main panel transitions to a delta confirmation view that presents the exact proposed
+JSON changes in a color-coded diff format (red for old values, green for proposed values).
+The operator must explicitly click CONFIRM or CANCEL.
+Figure 4.4:Streamlit SOC Chat Dashboard — Dark Mode Interface with Sidebar Indicators
+4.7 Containerized Deployment Architecture
+4.7.1 Multi-Container Service Decomposition
+To prepare the system for enterprise deployment, the entire application stack was container-
+ized using Docker. The orchestration is defined indocker-compose.yml, which divides
+the architecture into two microservices connected via an isolated internal bridge network
+(fortigate-net):
+1.fortigate-agentContainer:Built from apython:3.11-slimbase image using a
+multi-stage Dockerfile. This container hosts the Streamlit dashboard and all core agent
+Python logic. It exposes port8501for administrator browser access.
+57
+---PAGE 70---
+4.8. Architectural Limitations and Honest Assessment
+2.chromaContainer:Pulls the officialchromadb/chroma:latestimage and hosts the
+vectordatabasefortheRAGpipeline. Itexposesport8000ontheinternalfortigate-net
+network, inaccessible from outside the Docker environment, enforcing network isolation.
+4.7.2 Configuration, Secrets, and Data Persistence
+Two persistent volumes are mounted to ensure configuration data and transaction histories
+survive container restarts:
+•./logs:/app/logs— Binds the host log directory into the container. This ensures the
+cryptographicauditlog(audit.jsonl)androllbacksnapshotdatabase(logs/snapshots/)
+persist independently of the container lifecycle.
+•chroma_data:/chroma/.chroma— A named Docker volume providing persistent stor-
+age for the ChromaDB vector index.
+API credentials (FortiGate management IP, API token, Mistral API key) are injected into
+the container at runtime via an encrypted.envfile, which is explicitly excluded from version
+control via.gitignore. This separation of secrets from configuration code is consistent with
+the twelve-factor application methodology [8].
+Figure 4.5:Multi-Container Stack Running in Docker (fortigate-agent + chroma)
+4.8 Architectural Limitations and Honest Assessment
+Engineering realism requires acknowledging the architectural limitations of the current imple-
+mentation. These limitations are not defects; they are the natural boundaries of a well-scoped
+initial implementation, each representing a concrete direction for future work.
+58
+---PAGE 71---
+4.9. Future Work
+•Single-Operator Session Scope:TheAgentSessionobject and its associated state
+machine are scoped to a single active administrative session. If two operators simul-
+taneously connect to the same Streamlit instance, their session states would interfere.
+Enterprise deployment would require session multiplexing or per-user session isolation,
+which Streamlit’s multiprocessing model can support through external state stores (e.g.,
+Redis).
+•Synchronous API Communication:The REST API calls to the FortiGate appli-
+ance are currently synchronous. In a high-latency network (WAN-connected remote
+appliance), each grounding query could introduce significant response delay. Thehttpx
+library used in the implementation supports async operations, making migration to an
+asyncio-based concurrent pipeline a feasible next step.
+•Offline Dependency:The deterministic engine relies entirely on live FortiGate API
+responses for entity grounding and pre-state capture. If the appliance is unreachable,
+the orchestrator cannot validate any write intent and degrades to a read-only, cached-
+context mode. A local state cache with time-to-live (TTL) expiry would mitigate this
+dependency.
+•Context Window Scalability:The NLU prompt injector feeds the live FortiGate
+policy list into the LLM context window for grounding hints. On enterprise appliances
+with hundreds or thousands of policies, this injection would exceed the model’s context
+limit. A pagination or hierarchical pre-filtering step is required for production scale.
+•Rollback of CREATE Operations:As discussed in Section 4.3.6, CREATE op-
+erations are not automatically reversible by the snapshot engine to prevent orphaned
+reference chains. This is a deliberate, conservative design decision rather than a techni-
+cal limitation.
+4.9 Future Work
+Building upon the stable Trust Boundary Architecture established in this dissertation, future
+iterations of the FortiGate AI Agent platform could explore the following directions:
+•Multi-Appliance Orchestration:Extending therouter.pydispatcher to manage a
+fleet of FortiGate appliances concurrently, with the agent maintaining separate session
+contexts and snapshot stores per device. This would position the system as a natural
+59
+---PAGE 72---
+4.10. Chapter Conclusion
+language-driven alternative to FortiManager for small-to-medium enterprise environ-
+ments.
+•SIEM-Triggered Autonomous Response:Integrating the agent with a Security In-
+formation and Event Management (SIEM) system to receive threat intelligence alerts
+and autonomously propose—but not automatically execute, preserving the HITL re-
+quirement—BLOCK_IPor quarantine rules for anomalous traffic sources.
+•Comprehensive RAG Knowledge Base:Indexing the full official Fortinet docu-
+mentation corpus and FortiOS 7.x CLI references into the ChromaDB vector store. This
+would enable the agent to answer advanced configuration theory questions, provide re-
+mediation guidance for compliance violations, and suggest best-practice configurations
+grounded in official documentation rather than model training data.
+•Formal Verification of Compliance Rules:Applying formal methods (such as
+Boolean satisfiability or model checking) to the compliance rule engine to provide math-
+ematical proofs that the implemented ruleset is complete, non-redundant, and correctly
+captures the intended security policy—extending the current empirical validation with
+formal guarantees.
+4.10 Chapter Conclusion
+This chapter has provided a complete engineering account of the FortiGate AI Agent im-
+plementation. The codebase audit documented 8,744 lines of production Python across 13
+modules, each occupying a well-defined position within the Trust Boundary Architecture.
+The three core algorithm listings—the contextual entity grounding orchestrator, the shad-
+owed policy compliance detector, and the rolling SHA-256 audit chain—demonstrated the
+concrete implementation of the abstract safety guarantees proposed in Chapter 3.
+The three-proof validation campaign provided empirical, trace-level evidence for the three
+principal architectural claims: that the grounding engine prevents hallucinated or invalid
+entity identifiers from reaching the execution layer; that the compliance engine determin-
+istically blocks insecure configuration commands without LLM involvement; and that the
+snapshot-rollback engine, combined with explicit HITL confirmation, guarantees transactional
+reversibility and operator authority.
+Takentogether, theimplementationandvalidationresultsconfirmthattheTrustBoundary
+Architecture is not merely a theoretical construct but a deployable engineering system capable
+60
+---PAGE 73---
+4.10. Chapter Conclusion
+of providing safe, traceable, and reliable AI-assisted firewall administration under realistic
+operational conditions.
+61
+---PAGE 74---
+Bibliography
+[1] Theophilus Benson, Aditya Akella, and David Maltz. Unraveling the complexity of net-
+work management. InProceedings of the 6th USENIX Symposium on Networked Systems
+Design and Implementation (NSDI ’09), pages 335–348. USENIX Association, 2009. URL
+https://www.usenix.org/events/nsdi09/tech/full_papers/benson/benson.pdf.
+Available:https://www.usenix.org/events/nsdi09/tech/full_papers/benson/ben
+son.pdf.
+[2] David Oppenheimer, Archana Ganapathi, and David A. Patterson. Why do internet ser-
+vices fail, and what can be done about it? InProceedings of the 4th USENIX Symposium
+on Internet Technologies and Systems (USITS ’03), pages 1–15. USENIX Association,
+2003. URLhttps://www.usenix.org/legacy/events/usits03/tech/full_papers/
+oppenheimer/oppenheimer.pdf. Available:https://www.usenix.org/legacy/events
+/usits03/tech/full_papers/oppenheimer/oppenheimer.pdf.
+[3] Changjie Wang, Mariano Scazzariello, Alireza Farshin, Simone Ferlin, Dejan Kostić, and
+Marco Chiesa. Netconfeval: Can llms facilitate network configuration? InProceedings of
+the 20th International Conference on emerging Networking EXperiments and Technologies
+(CoNEXT ’24), pages 90–104. Association for Computing Machinery, 2024. URLhttps:
+//dl.acm.org/doi/10.1145/3656296. Available:https://dl.acm.org/doi/10.1145
+/3656296.
+[4] Ratul Mahajan, David Wetherall, and Tom Anderson. Understanding bgp misconfigura-
+tion. InProceedings of the 2002 ACM SIGCOMM Conference, pages 3–16. Association for
+Computing Machinery, 2002. URLhttps://dl.acm.org/doi/10.1145/633025.633027.
+Available:https://dl.acm.org/doi/10.1145/633025.633027.
+[5] Mark Burgess. A site configuration engine.Computing Systems, 8(3):309–337, 1995. URL
+https://www.usenix.org/legacy/publications/compsystems/1995/sum_burgess.
+62
+---PAGE 75---
+Bibliography
+pdf. Available:https://www.usenix.org/legacy/publications/compsystems/1995/
+sum_burgess.pdf.
+[6] Akond Rahman and Laurie Williams. Characterizing defective configuration scripts used
+for continuous deployment. InProceedings of the 2018 IEEE 11th International Con-
+ference on Software Testing, Verification and Validation (ICST), pages 34–45. IEEE,
+2018. URLhttps://ieeexplore.ieee.org/document/8377755. Available:
+https://ieeexplore.ieee.org/document/8377755.
+[7] Aris Leivadeas and Matthias Falkner. A survey on intent-based networking.IEEE Com-
+munications Surveys & Tutorials, 24(4):2004–2041, 2022. URLhttps://ieeexplore.i
+eee.org/document/9925251. Available:https://ieeexplore.ieee.org/document/9
+925251.
+[8] Daniel Sokolowski, David Spielmann, and Guido Salvaneschi. Automated infrastructure
+as code program testing.IEEE Transactions on Software Engineering, 50(7):1585–1599,
+2024. URLhttps://ieeexplore.ieee.org/document/10515152. Available:https:
+//ieeexplore.ieee.org/document/10515152.
+[9] Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petroni, Vladimir Karpukhin, Na-
+man Goyal, Heinrich Küttler, Mike Lewis, Wen-tau Yih, Tim Rocktäschel, Sebastian
+Riedel, and Douwe Kiela. Retrieval-augmented generation for knowledge-intensive nlp
+tasks.Advances in Neural Information Processing Systems (NeurIPS), 33:9459–9474,
+2020. URLhttps://proceedings.neurips.cc/paper/2020/hash/6b493230205f780
+e1bc26945df7481e5-Abstract.html. Available:https://proceedings.neurips.cc/p
+aper/2020/hash/6b493230205f780e1bc26945df7481e5-Abstract.html.
+[10] Shaghayegh Shajarian, Sajad Khorsandroo, and Mahmoud Abdelsalam. Poster: Intelli-
+gent network management: Rag-enhanced llms for log analysis, troubleshooting, and doc-
+umentation. InProceedings of the 20th International Conference on emerging Networking
+EXperiments and Technologies (CoNEXT ’24), pages 489–490. Association for Comput-
+ing Machinery, 2024. URLhttps://dl.acm.org/doi/10.1145/3680121.3699887.
+Available:https://dl.acm.org/doi/10.1145/3680121.3699887.
+[11] Oihane Gómez-Carmona, Diego Casado-Mansilla, and Diego López-de Ipiña. Human-
+in-the-loop machine learning: Reconceptualizing the role of the user in interactive ap-
+proaches.Internet of Things, 25:101048, 2024. URLhttps://www.sciencedirect.co
+63
+---PAGE 76---
+Bibliography
+m/science/article/pii/S254266052300262X. Available:https://www.sciencedirec
+t.com/science/article/pii/S254266052300262X.
+[12] Alexander Clemm, Laurent Ciavaglia, Lisandro Zambenedetti Granville, and Jeff
+Tantsura. Intent-based networking - concepts and definitions. RFC 9315, 2022. URL
+https://www.rfc-editor.org/info/rfc9315. Available:https://www.rfc-editor.
+org/info/rfc9315.
+[13] Ehab S. Al-Shaer and Hazem H. Hamed. Discovery of policy anomalies in distributed fire-
+walls. InIEEE INFOCOM 2004 - Conference on Computer Communications - Twenty-
+Third Annual Joint Conference of the IEEE Computer and Communications Societies,
+volume 4, pages 2605–2616. IEEE, 2004. URLhttps://ieeexplore.ieee.org/docume
+nt/1354680. Available:https://ieeexplore.ieee.org/document/1354680.
+[14] Lihua Yuan, Hao Chen, Jianning Mai, Chen-Nee Chuah, Zhendong Su, Prasant Mo-
+hapatra, and Carter Davis. Fireman: A toolkit for firewall modeling and analy-
+sis.IEEE Symposium on Security and Privacy, pages 199–213, 2006. URLhttps:
+//ieeexplore.ieee.org/document/1630283. Available:https://ieeexplore.ieee.
+org/document/1630283.
+[15] Gonzalo Navarro. A guided tour to approximate string matching.ACM Computing
+Surveys, 33(1):31–88, 2001. URLhttps://dl.acm.org/doi/10.1145/375360.375365.
+Available:https://dl.acm.org/doi/10.1145/375360.375365.
+64

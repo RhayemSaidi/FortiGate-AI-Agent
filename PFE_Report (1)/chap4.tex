@@ -1,19 +1,19 @@
 
 \chapter{Implementation, Testing, and Validation}
-\markboth{Chapter 4. Implementation, Testing, and Validation}{Chapter 4. Implementation, Testing, and Validation}
+
 
 \section{Introduction}
 The implementation, testing, and validation phase constitutes the practical realization of the Trust Boundary Architecture proposed in Chapter 3. While Chapter 3 established the conceptual and structural design of the hybrid FortiGate AI Agent, this chapter shifts the focus to engineering substance: the actual implemented Python codebase, its measurable technical metrics, the precise algorithms governing the critical safety mechanisms, and a rigorous empirical validation campaign structured as a series of architectural proofs.
 
 This chapter is organized as follows. Section~\ref{sec:env} describes the hardware and software environment used during development and validation. Section~\ref{sec:implementation} provides a technical audit of the implemented codebase, covering directory structure, file metrics, and a detailed description of each core software component. Section~\ref{sec:listings} presents the actual implemented source code for the most architecturally significant algorithms. Section~\ref{sec:validation} contains the structured validation campaign, framing each test as an \emph{architectural proof} that empirically demonstrates a specific safety claim of the Trust Boundary Architecture. Section~\ref{sec:ui} demonstrates the Streamlit Security Operations Center interface and its integration with the agent backend. Section~\ref{sec:docker} details the containerized deployment architecture. Finally, Section~\ref{sec:limits} acknowledges the architectural limitations of the current implementation and Section~\ref{sec:future} outlines future directions.
 
-% ─────────────────────────────────────────────────────────────
+% -------------------------------------------------------------
 \section{Development and Testing Environment}
 \label{sec:env}
 
 To validate the safety guarantees and performance parameters of the FortiGate AI Agent, a dedicated local engineering environment was established. Table~\ref{tab:env_specs} summarizes the full environment specification.
 
-\begin{table}[H]
+\begin{table}[htpb]
 \centering
 \small
 \begin{tabular}{|l|p{9cm}|}
@@ -31,13 +31,13 @@ To validate the safety guarantees and performance parameters of the FortiGate AI
 \textbf{HTTP Client} & \texttt{httpx} v0.25 (async-capable REST communication with FortiGate API) \\ \hline
 \textbf{Test Framework} & \texttt{pytest} v7.4 (unit and integration test automation) \\ \hline
 \end{tabular}
-\caption{Development and Testing Environment Specifications}
+\caption{Environment Specifications}
 \label{tab:env_specs}
 \end{table}
 
 The choice of \texttt{mistral-small-latest} is deliberate. As established in Chapter 2, the role of the LLM in this architecture is strictly confined to \emph{intent parsing}—transforming unstructured natural language into a raw JSON schema. Setting temperature to $T=0.0$ eliminates stochastic generation, making the NLU output deterministic for identical inputs during validation runs. This reproducibility is essential for the empirical testing methodology applied in Section~\ref{sec:validation}.
 
-% ─────────────────────────────────────────────────────────────
+% -------------------------------------------------------------
 \section{System Implementation and Technical Audit}
 \label{sec:implementation}
 
@@ -46,12 +46,25 @@ The choice of \texttt{mistral-small-latest} is deliberate. As established in Cha
 
 The project codebase is strictly partitioned to enforce the trust boundary defined in Chapter 3. All probabilistic components (NLU interpreting and RAG retrieval) are isolated from all deterministic components (validation, compliance, snapshot, and REST API execution). Table~\ref{tab:codebase_metrics} audits the implemented files, detailing their relative path, measured line count, and primary architectural responsibility.
 
-\begin{table}[H]
-\centering
-\small
-\begin{tabular}{|l|c|p{7.5cm}|}
+\begin{longtable}{|l|c|p{7.5cm}|}
+\caption{Codebase Structure and Metrics}
+\label{tab:codebase_metrics} \\
 \hline
 \textbf{File Relative Path} & \textbf{Lines} & \textbf{Architectural Responsibility} \\ \hline
+\endfirsthead
+
+\multicolumn{3}{c}%
+{{\bfseries \tablename\ \thetable{} -- continued from previous page}} \\
+\hline
+\textbf{File Relative Path} & \textbf{Lines} & \textbf{Architectural Responsibility} \\ \hline
+\endhead
+
+\hline \multicolumn{3}{|r|}{{Continued on next page}} \\ \hline
+\endfoot
+
+\hline
+\endlastfoot
+
 \texttt{agent/core.py} & 2,417 & Master session orchestrator. Coordinates routing classification, session state machine transitions, grounding, compliance pre-checks, HITL confirmation, and post-execution verification. \\ \hline
 \texttt{agent/compliance.py} & 450 & Proactive deterministic compliance engine. Evaluates proposed configuration changes against a static ruleset (POL-001 through POL-005, INTF-001) before any API call is dispatched. \\ \hline
 \texttt{agent/nlu\_interpreter.py} & 765 & NLU layer. Constructs and dispatches Mistral API prompts, then parses and normalizes the returned JSON output via markdown-fence extraction and structural normalization. \\ \hline
@@ -65,10 +78,7 @@ The project codebase is strictly partitioned to enforce the trust boundary defin
 \texttt{audit/logger.py} & 156 & Cryptographic audit logger. Writes append-only JSONL entries with rolling SHA-256 hash chains, creating a tamper-evident ledger. \\ \hline
 \texttt{audit/report.py} & 101 & Audit report and integrity verifier. Re-computes hash chain and flags any deleted, altered, or reordered log entries. \\ \hline
 \texttt{streamlit\_app.py} & 210 & SOC-style Streamlit dashboard. Renders conversation UI, live resource meters, FortiGate connection indicator, and delta diff confirmations. \\ \hline
-\end{tabular}
-\caption{FortiGate AI Agent Codebase Structure and Metrics}
-\label{tab:codebase_metrics}
-\end{table}
+\end{longtable}
 
 The total codebase spans approximately \textbf{8,744 lines} of production Python, distributed across 13 primary modules. This figure excludes test suites, documentation files, and Docker configuration. The largest module is \texttt{agent/core.py} at 2,417 lines, reflecting the architectural complexity of the session state machine, which must coordinate between all other modules while maintaining full transactional integrity. The second largest is \texttt{agent/tools.py} at 1,480 lines, representing the comprehensive coverage of the FortiGate v7.0.5 REST API surface.
 
@@ -93,7 +103,9 @@ The grounding engine (\texttt{agent/nlu\_grounder.py}) constitutes the primary a
 The grounding algorithm proceeds as follows for a policy reference:
 
 \begin{enumerate}
-    \item \textbf{API Query:} A direct HTTP GET request is dispatched to \texttt{/api/v2/cmdb/firewall/policy/<id>}. A 404 response conclusively proves the entity does not exist.
+    \item \textbf{API Query:} A direct HTTP GET request is dispatched to
+    \texttt{/api/v2/cmdb/firewall/\allowbreak{}policy/<id>}.
+    A 404 response conclusively proves the entity does not exist.
     \item \textbf{Name Resolution (Fuzzy Matching):} If a name is provided instead of an ID, the engine fetches the full policy list via \texttt{/api/v2/cmdb/firewall/policy/} and scores each candidate against the extracted name using Levenshtein edit distance~\cite{navarro2001guided}. A match is only accepted if the edit distance is below a defined threshold \emph{and} the normalized candidate names are unique (no ambiguous matches).
     \item \textbf{Issue Registration:} Any failed resolution (404 response, no match found, or multiple matches above threshold) is recorded as a \texttt{GroundingIssue} and appended to the \texttt{GroundedIntentSchema.issues} list. The orchestrator inspects this list after grounding and blocks execution if any unresolved issue of \texttt{kind=``not\_found''} or \texttt{kind=``ambiguous''} is present.
 \end{enumerate}
@@ -138,7 +150,9 @@ To guarantee transactional safety, the snapshot engine (\texttt{agent/snapshot.p
 
 \begin{enumerate}
     \item Generates a unique, 8-character hexadecimal \texttt{op\_id} for the operation (e.g., \texttt{A1B2C3D4}).
-    \item Dispatches an HTTP GET to the target resource endpoint (\texttt{/api/v2/cmdb/firewall/policy/<id>}) to retrieve the exact current JSON configuration.
+    \item Dispatches an HTTP GET to the target resource endpoint
+    (\texttt{/api/v2/cmdb/firewall/\allowbreak{}policy/<id>}) to
+    retrieve the exact current JSON configuration.
     \item Persists the pre-state JSON payload to disk in a structured snapshot store, keyed by \texttt{op\_id}.
     \item Records the snapshot metadata (timestamp, operation type, target resource, \texttt{op\_id}) in the audit log chain.
 \end{enumerate}
@@ -159,7 +173,7 @@ To prevent log tampering, each record includes a \texttt{prev\_hash} field conta
 \end{equation}
 where $H(T_0) = \text{``GENESIS''}$ (the immutable genesis string for the first record). This rolling hash chain construction ensures that any modification to a historical record—whether a character alteration, a line deletion, or a record reordering—immediately propagates a chain break detectable by the \texttt{audit/report.py} integrity checker.
 
-% ─────────────────────────────────────────────────────────────
+% -------------------------------------------------------------
 \section{Core Algorithm Implementation Listings}
 \label{sec:listings}
 
@@ -320,211 +334,138 @@ def log(event_type: str, payload: dict) -> None:
 
 The integrity verification function in \texttt{audit/report.py} re-reads the file sequentially, re-computes each hash from its payload and \texttt{prev\_hash}, and compares it to the stored \texttt{hash} field. Any discrepancy—whether from a deleted record, an altered timestamp, or a modified payload byte—is immediately flagged, providing a forensic tamper-evidence capability comparable to a blockchain-style ledger.
 
-% ─────────────────────────────────────────────────────────────
+% -------------------------------------------------------------
 \section{System Validation and Architectural Proofs}
 \label{sec:validation}
 
 Rather than performing superficial feature demonstrations, the validation campaign for the FortiGate AI Agent is structured as a series of \emph{architectural proofs}: each test case targets a specific formal claim of the Trust Boundary Architecture, documents the exact system inputs, internal state transitions, REST API payloads, and final outputs, and provides empirical evidence that the claimed architectural guarantee holds under the tested conditions.
 
+To maximize operational realism, the proofs presented in this section are not merely conceptual narrative. They represent actual system executions, backed by raw internal trace outputs, JSON serialization states, and HTTP status codes logged by the deterministic backend engine. The visual evidence strategy pairs the operator's Streamlit SOC dashboard interaction with these internal terminal traces, proving that the front-end user experience is genuinely driven by the rigid safety logic defined in Chapter 3. A complete baseline scenario is presented first to establish the system's normal operational cycle; the subsequent proofs then target specific edge-case safety guarantees.
+
+% -------------------------------------------------------------
+\subsection{Baseline Scenario: End-to-End Operational Cycle}
+\label{subsec:baseline}
+
+Before examining the safety edge-cases, it is essential to establish the system's normal, successful operational cycle. This baseline scenario traces a single, complete administrative request—\emph{``disable NAT on policy 4''}—through every layer of the Trust Boundary Architecture, from natural language input to physical firewall mutation and audit log entry.
+
+\textbf{Step 1 — Natural Language Input:} The operator types a conversational command into the Streamlit SOC interface. No CLI syntax or API knowledge is required. The command is submitted as free-form text.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.92\linewidth]{Images/baseline_ui_command.png}
+    \caption{Streamlit UI: Submitting an NLP Command}
+    \label{fig:baseline_ui_command}
+\end{figure}
+
+\textbf{Step 2 — NLU Extraction and Schema Production:} The \texttt{nlu\_interpreter.py} module dispatches the message to the Mistral LLM with a structured prompt embedding the current live FortiGate device context. The model returns a raw JSON object, which the module validates and deserializes into a typed \texttt{RawIntentSchema}. The terminal trace below shows the extracted schema:
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.92\linewidth]{Images/baseline_terminal_nlu.png}
+    \caption{Terminal Trace: NLU Intent Extraction}
+    \label{fig:baseline_terminal_nlu}
+\end{figure}
+
+\textbf{Step 3 — Grounding and Compliance Clearance:} The \texttt{nlu\_grounder.py} engine dispatches an HTTP GET to \texttt{/api/v2/cmdb/firewall/policy/4}, confirms the policy exists (HTTP 200), and fetches its current live state (\texttt{nat: enable}). The delta is validated against the current state, and no compliance rules (POL-001 through INTF-001) are triggered. The result is \texttt{is\_valid=True}, and the pipeline proceeds to the HITL gate.
+
+\textbf{Step 4 — HITL Visual Confirmation:} The orchestrator presents the operator with a visual delta diff confirming the exact proposed change before any write is executed. This is the human-in-the-loop checkpoint.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.92\linewidth]{Images/baseline_hitl_confirm.png}
+    \caption{Streamlit UI: HITL Delta Diff Confirmation}
+    \label{fig:baseline_hitl_confirm}
+\end{figure}
+
+\textbf{Step 5 — Snapshot Capture, API Execution, and Audit:} Upon operator confirmation, the \texttt{snapshot.py} engine captures the pre-mutation state to disk. The terminal trace captures the snapshot creation, the HTTP PUT dispatch, the 200 OK response, and the SHA-256 audit log entry:
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.92\linewidth]{Images/baseline_terminal_snapshot.png}
+    \caption{Terminal Trace: Snapshot, API Dispatch, and Audit Log}
+    \label{fig:baseline_terminal_snapshot}
+\end{figure}
+
+\textbf{Baseline Result:} The complete operational cycle executed successfully. The natural language command traversed the NLU layer, the Grounding Engine, the Compliance Gate, the HITL confirmation checkpoint, the REST API execution bridge, and the cryptographic audit chain—all in a single, uninterrupted sequence. This baseline confirms the fundamental operational correctness of the Trust Boundary Architecture before the edge-case proofs are examined.
+
+% -------------------------------------------------------------
 \subsection{Proof 1: Hallucination Prevention via the Grounding Engine}
 \label{subsec:proof1}
 
 \textbf{Architectural Claim:} The system must prevent any execution request from reaching the FortiGate REST API if it references a resource identifier that does not exist on the live device, regardless of whether the identifier was generated by the LLM or entered by the operator.
 
-\textbf{Test Input:}
-\begin{lstlisting}
-User: enable policy 9999
-\end{lstlisting}
+\textbf{Scenario:} The operator types \texttt{enable policy 9999}. Only policies 1, 2, 3, and 4 exist on the connected FortiGate appliance. The NLU layer correctly parses the intent and extracts \texttt{policy\_id=9999}. The grounding engine then dispatches an HTTP GET to \texttt{/api/v2/cmdb/firewall/policy/9999}. The appliance returns \texttt{HTTP 404 Not Found}, which the grounder records as a \texttt{GroundingIssue(kind=``not\_found'')}. Since \texttt{has\_errors()} returns \texttt{True}, the orchestrator sets \texttt{is\_valid=False} and halts the pipeline before any write is ever attempted.
 
-\textbf{NLU Interpretation:} The Mistral model receives the user's message along with the current live context (which lists only policies 1, 2, 3, and 4 as existing). The \texttt{nlu\_interpreter.py} receives the following structured response from the model:
+The following screenshot captures the complete Proof 1 execution: the operator's input in the Streamlit chat on the left, and the backend terminal trace showing the HTTP 404 and the \texttt{GroundingIssue} generation on the right.
 
-\begin{lstlisting}[language={}]
-{
-  "intent": "enable_policy",
-  "policy_id": 9999,
-  "policy_name": null
-}
-\end{lstlisting}
-
-\textbf{Grounding Engine Check:} The \texttt{nlu\_grounder.py} calls \texttt{\_ground\_policy\_ref()}, which dispatches an HTTP GET to the FortiGate appliance:
-
-\begin{lstlisting}[language={}]
-GET /api/v2/cmdb/firewall/policy/9999 HTTP/1.1
-Host: 192.168.1.134
-Authorization: Bearer <api_token>
-
-HTTP/1.1 404 Not Found
-Content-Type: application/json
-{"http_status": 404, "error": -3, "message": "Object not found"}
-\end{lstlisting}
-
-The 404 response triggers the registration of a \texttt{GroundingIssue}:
-\begin{lstlisting}[language={}]
-GroundingIssue(
-    field   = "policy_id",
-    kind    = "not_found",
-    message = "Policy ID 9999 does not exist on this FortiGate."
-)
-\end{lstlisting}
-
-\textbf{Orchestrator Decision:} The \texttt{GroundedIntentSchema.has\_errors()} method returns \texttt{True} (due to \texttt{kind="not\_found"}), setting \texttt{is\_valid=False}. The orchestrator checks \texttt{is\_valid} before dispatching any PUT or POST command. Since \texttt{is\_valid=False}, the execution path is never entered. Instead, the orchestrator returns a clarification request to the operator.
-
-\textbf{System Response to Operator:}
-\begin{lstlisting}[language={}]
-[AGENT] I could not locate policy ID 9999 on the connected FortiGate.
-        Available policy IDs: [1, 2, 3, 4].
-        Please specify a valid policy ID or name.
-\end{lstlisting}
-
-\textbf{Proof Result:} No HTTP PUT or POST was dispatched. The hallucinated or invalid identifier was trapped at the trust boundary. The grounding guarantee holds: \emph{non-existent entities cannot reach the execution layer}.
-
-\begin{figure}[H]
+\begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.90\linewidth]{Images/grounding_rejection.png}
-    \caption{Grounding Engine Rejecting a Non-Existent Policy ID (Proof 1)}
+    \includegraphics[width=0.92\linewidth]{Images/grounding_rejection.png}
+    \caption{Proof 1: Grounding Engine Rejecting Invalid Entity ID}
     \label{fig:grounding_rejection}
 \end{figure}
+
+\textbf{Proof Result:} No HTTP PUT or POST was dispatched. The hallucinated or invalid identifier was trapped at the trust boundary before reaching the execution layer.
 
 \subsection{Proof 2: Deterministic Safety via the Compliance Gate}
 \label{subsec:proof2}
 
 \textbf{Architectural Claim:} The system must intercept and block insecure configuration commands before they are dispatched to the physical firewall, overriding any LLM-generated intent, and must do so without relying on the LLM to make the safety determination.
 
-\textbf{Test Input:}
-\begin{lstlisting}
-User: create a policy from any to any allowing all traffic
-\end{lstlisting}
+\textbf{Scenario:} The operator types \texttt{create a policy from any to any allowing all traffic}. The NLU layer correctly parses this into a \texttt{create\_policy} intent with \texttt{srcaddr=all}, \texttt{dstaddr=all}, \texttt{service=ALL}, and \texttt{action=accept}. Grounding passes since \texttt{any} and \texttt{all} are built-in FortiGate address objects. The compliance engine then evaluates the proposed \texttt{create\_params} payload against the full ruleset in pure deterministic Python—\textbf{zero LLM involvement at this stage}. Rule \texttt{POL-001} fires immediately, returning a \texttt{ComplianceFinding(severity=``CRITICAL'')}. The orchestrator detects the CRITICAL severity and halts the pipeline; no HTTP POST is ever dispatched to the physical appliance.
 
-\textbf{NLU Interpretation:} The model correctly parses the user's intent into the following \texttt{RawIntentSchema}:
-\begin{lstlisting}[language={}]
-{
-  "intent": "create_policy",
-  "create_params": {
-    "name":     "any-to-any-accept",
-    "srcintf":  "any",
-    "dstintf":  "any",
-    "srcaddr":  "all",
-    "dstaddr":  "all",
-    "service":  "ALL",
-    "action":   "accept",
-    "status":   "enable"
-  }
-}
-\end{lstlisting}
+The screenshot below pairs the operator's Streamlit interface (showing the \texttt{[BLOCKED]} banner) with the backend terminal showing the NLU-extracted \texttt{RawIntentSchema} and the \texttt{ComplianceFinding} object that triggered the block.
 
-\textbf{Grounding:} The CREATE intent does not require entity grounding on a pre-existing policy (there is no ID to validate). Grounding checks for interface and address object validity. Since \texttt{"any"} and \texttt{"all"} are built-in FortiGate objects, grounding passes with \texttt{is\_valid=True}.
-
-\textbf{Compliance Gate Check:} The \texttt{compliance.py} engine evaluates the proposed \texttt{create\_params} payload against the ruleset:
-\begin{lstlisting}[language={}]
-Checking POL-001: srcaddr=all, dstaddr=all, action=accept
-  --> CRITICAL VIOLATION DETECTED
-ComplianceFinding(
-    rule_id  = "POL-001",
-    severity = "CRITICAL",
-    finding  = "Policy allows any source to any destination with "
-               "ACCEPT action. This creates an open firewall rule "
-               "and violates the minimum-access security principle."
-)
-\end{lstlisting}
-
-\textbf{Orchestrator Decision:} The compliance engine returns a \texttt{CRITICAL} finding. The orchestrator's compliance check logic evaluates the maximum finding severity. Upon detecting \texttt{CRITICAL}, the orchestrator immediately halts the transaction pipeline. No HTTP POST is dispatched.
-
-\textbf{System Response to Operator:}
-\begin{lstlisting}[language={}]
-[BLOCKED] Compliance Engine: CRITICAL Violation
-Rule POL-001: This operation would create an unrestricted
-accept-all firewall policy. The action has been blocked to
-prevent a complete bypass of the firewall security posture.
-\end{lstlisting}
-
-\textbf{Proof Result:} The compliance engine, operating with zero LLM involvement, deterministically blocked an insecure command. The physical firewall state was not modified.
-
-\begin{figure}[H]
+\begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.90\linewidth]{Images/compliance_block.png}
-    \caption{Compliance Engine Blocking a CRITICAL Wildcard Policy Creation (Proof 2)}
+    \includegraphics[width=0.92\linewidth]{Images/compliance_block.png}
+    \caption{Proof 2: Compliance Engine Blocking a CRITICAL Policy Violation}
     \label{fig:compliance_block}
 \end{figure}
+
+\textbf{Proof Result:} The deterministic Python compliance engine overrode the LLM-generated intent. The physical firewall state was not modified. Zero LLM calls were made at the safety evaluation stage.
 
 \subsection{Proof 3: Transactional Integrity via Rollback and HITL Confirmation}
 \label{subsec:proof3}
 
 \textbf{Architectural Claim:} The operator must maintain ultimate authority over write operations through explicit HITL confirmation, and any committed mutation must be cleanly reversible to its exact pre-mutation state via the snapshot rollback engine.
 
-\textbf{Test Input:}
-\begin{lstlisting}
-User: disable NAT on policy 4
-\end{lstlisting}
+\textbf{Scenario:} The operator issues a second command: \texttt{rollback last}. This proof therefore uses the baseline scenario mutation (\texttt{disable NAT on policy 4}) as its starting state—building directly on what was demonstrated in Section~\ref{subsec:baseline}. This is intentional: it proves that the rollback engine operates on the previously confirmed and executed mutation.
 
-\textbf{NLU Interpretation:}
-\begin{lstlisting}[language={}]
-{
-  "intent": "update_policy",
-  "policy_id": 4,
-  "deltas": [{"field": "nat", "new_value": "disable"}]
-}
-\end{lstlisting}
+The following screenshot captures the HITL visual confirmation pane rendered by the Streamlit interface, showing the color-coded delta diff that the operator must explicitly approve before any write is committed:
 
-\textbf{Grounding:} The grounder confirms policy 4 exists (HTTP 200) and fetches the current state:
-\begin{lstlisting}[language={}]
-current_state["nat"] = "enable"   // FortiGate live value
-grounded_delta: {"field": "nat", "old_value": "enable", "new_value": "disable"}
-is_valid = True
-\end{lstlisting}
-
-\textbf{Compliance Check:} The \texttt{nat} field modification does not trigger any compliance rule. Zero findings. The orchestrator proceeds to the HITL gate.
-
-\textbf{HITL Visual Delta Diff:} The Streamlit interface renders the following confirmation pane, displaying the exact proposed change as a unified diff before prompting the operator:
-
-\begin{lstlisting}[language={}]
- Policy 4 Proposed Changes:
- ─────────────────────────────────────────
- - "nat": "enable"
- + "nat": "disable"
- ─────────────────────────────────────────
- [CONFIRM] [CANCEL]
-\end{lstlisting}
-
-\textbf{Snapshot Capture:} The operator clicks CONFIRM. Immediately prior to dispatching the PUT, \texttt{snapshot.py} captures the pre-state and persists it:
-\begin{lstlisting}[language={}]
-op_id      : A1B2C3D4
-snapshot   : {"policyid": 4, "nat": "enable", ... <full policy JSON> }
-stored at  : logs/snapshots/A1B2C3D4.json
-\end{lstlisting}
-
-\textbf{REST API Execution:}
-\begin{lstlisting}[language={}]
-PUT /api/v2/cmdb/firewall/policy/4 HTTP/1.1
-Host: 192.168.1.134
-Content-Type: application/json
-{"nat": "disable"}
-
-HTTP/1.1 200 OK
-{"http_status": 200, "revision": "..."}
-\end{lstlisting}
-
-\textbf{Rollback Request:}
-\begin{lstlisting}
-User: rollback last
-\end{lstlisting}
-The engine loads \texttt{A1B2C3D4.json} and re-dispatches the pre-state:
-\begin{lstlisting}[language={}]
-PUT /api/v2/cmdb/firewall/policy/4 HTTP/1.1
-{"nat": "enable", ... <full pre-state payload> }
-
-HTTP/1.1 200 OK   -- Policy restored to pre-mutation state
-\end{lstlisting}
-
-\textbf{Proof Result:} The operator confirmed the change explicitly. The pre-state was captured before execution. The rollback perfectly restored the exact prior configuration. Transactional integrity was maintained end-to-end.
-
-\begin{figure}[H]
+\begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.90\linewidth]{Images/rollback_nat.png}
-    \caption{Visual Delta Diff Confirmation Pane and Rollback Recovery (Proof 3)}
+    \includegraphics[width=0.92\linewidth]{Images/rollback_nat.png}
+    \caption{Proof 3: Transactional Rollback from Pre-Mutation Snapshot}
     \label{fig:rollback_nat}
 \end{figure}
 
-% ─────────────────────────────────────────────────────────────
+\textbf{Rollback Execution:} After confirming the initial mutation, the operator types \texttt{rollback last}. The snapshot engine loads \texttt{A1B2C3D4.json} from \texttt{logs/snapshots/} and re-dispatches the full pre-state payload via HTTP PUT. The FortiGate returns \texttt{200 OK}, confirming the policy has been restored to its exact prior configuration.
+
+\textbf{Proof Result:} The operator confirmed the change explicitly via the Streamlit UI. The pre-state was physically captured to the filesystem immediately prior to execution. The rollback command successfully loaded this payload from disk and re-dispatched it, perfectly restoring the physical firewall state. Transactional integrity and operator authority were maintained end-to-end.
+
+\subsection{Proof 4: Conversational Maturity via Clarification Continuity}
+\label{subsec:proof4}
+
+\textbf{Architectural Claim:} The system must gracefully manage ambiguous intents by pausing execution, requesting missing parameters from the operator, and resuming the stateful context in the subsequent turn—without forcing the operator to restart the entire command sequence.
+
+\textbf{Scenario:} The operator types \texttt{allow HTTP and HTTPS traffic}. The NLU layer successfully extracts the service names, but the intent is structurally incomplete: the source interface, destination interface, and destination address are all absent. Rather than guessing or producing an incomplete (and therefore dangerous) firewall policy, the orchestrator transitions the \texttt{AgentSession} into the \texttt{CLARIFY} state and stores the partial parameters in short-term conversational memory.
+
+In Turn 2, the operator supplies the missing fields: \texttt{from the wan1 interface to the dmz server on the internal interface}. The orchestrator merges the new input with the suspended Turn 1 context and re-routes the complete intent through the NLU-Grounder-Compliance pipeline. The grounding engine then reconciles \texttt{wan1}, \texttt{dmz server}, and \texttt{internal} to their live API identifiers.
+
+The screenshot below captures the two-turn dialogue in the Streamlit SOC interface, alongside the backend terminal showing the \texttt{SessionState: CLARIFY} transition and the subsequent merge and re-evaluation:
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.92\linewidth]{Images/clarification_continuity.png}
+    \caption{Proof 4: Clarification State and Conversational Continuity}
+    \label{fig:clarification_continuity}
+\end{figure}
+
+\textbf{Proof Result:} The orchestrator successfully navigated semantic ambiguity without executing an incomplete or dangerous policy. The HITL-enforced clarification gate prevented premature execution while the conversational context engine preserved continuity across turns.
+
+% -------------------------------------------------------------
 \section{Streamlit Security Operations Center Interface}
 \label{sec:ui}
 
@@ -532,7 +473,7 @@ HTTP/1.1 200 OK   -- Policy restored to pre-mutation state
 
 The administrator interacts with the FortiGate AI Agent through a Streamlit-based Security Operations Center (SOC) dashboard, implemented in \texttt{streamlit\_app.py}. Streamlit was selected for its native Python integration—which eliminates any client-server protocol barrier between the UI layer and the agent backend—and for its stateful session model, which maps cleanly onto the \texttt{AgentSession} object maintained by \texttt{agent/core.py}.
 
-The UI is implemented in dark mode with a professional \texttt{\#1E1E2E} background color, custom CSS injection for typography and component styling, and a full-width chat interface. All design decisions are motivated by SOC usability principles: high contrast for readability under low-light conditions, minimal visual noise, and unambiguous alert states.
+The UI is implemented in dark mode with a professional background color, custom CSS injection for typography and component styling, and a full-width chat interface. All design decisions are motivated by SOC usability principles: high contrast for readability under low-light conditions, minimal visual noise, and unambiguous alert states.
 
 \subsection{Interface Components}
 
@@ -540,18 +481,18 @@ The dashboard is structured into three functional regions:
 
 \begin{enumerate}
     \item \textbf{Sidebar (Left):} Displays a real-time FortiGate connection status indicator (green/red badge), a device information panel (hostname, firmware version, serial number fetched via \texttt{/api/v2/monitor/system/status/}), and live resource meters tracking agent process CPU and memory usage using the \texttt{psutil} library.
-    \item \textbf{Main Chat Panel:} Renders the conversation history as a scrollable message thread, clearly distinguishing user messages (right-aligned, accent color) from agent responses (left-aligned, neutral). Compliance block alerts are rendered as full-width red banners. Advisory warnings are rendered as yellow banners.
-    \item \textbf{Delta Diff Confirmation Pane:} When a write operation reaches the HITL gate, the main panel transitions to a delta confirmation view that presents the exact proposed JSON changes in a color-coded diff format (red for old values, green for proposed values). The operator must explicitly click CONFIRM or CANCEL.
+    \item \textbf{Main Chat Panel:} Renders the conversation history as a scrollable message thread, clearly distinguishing user messages from agent responses. Compliance block alerts are rendered as full-width red banners. Advisory warnings are rendered as yellow banners.
+    \item \textbf{Delta Diff Confirmation Pane:} When a write operation reaches the HITL gate, the main panel transitions to a delta confirmation view that presents the exact proposed JSON changes in a color-coded diff format. The operator must explicitly click CONFIRM or CANCEL.
 \end{enumerate}
 
-\begin{figure}[H]
+\begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.90\linewidth]{Images/streamlit_interface.png}
-    \caption{Streamlit SOC Chat Dashboard — Dark Mode Interface with Sidebar Indicators}
+    \includegraphics[width=0.92\linewidth]{Images/streamlit_interface.png}
+    \caption{Streamlit SOC Chat Dashboard Overview}
     \label{fig:streamlit_interface}
 \end{figure}
 
-% ─────────────────────────────────────────────────────────────
+% -------------------------------------------------------------
 \section{Containerized Deployment Architecture}
 \label{sec:docker}
 
@@ -574,28 +515,54 @@ Two persistent volumes are mounted to ensure configuration data and transaction 
 
 API credentials (FortiGate management IP, API token, Mistral API key) are injected into the container at runtime via an encrypted \texttt{.env} file, which is explicitly excluded from version control via \texttt{.gitignore}. This separation of secrets from configuration code is consistent with the twelve-factor application methodology~\cite{sokolowski2024automated}.
 
-\begin{figure}[H]
+\begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.90\linewidth]{Images/docker_services.png}
-    \caption{Multi-Container Stack Running in Docker (fortigate-agent + chroma)}
+    \includegraphics[width=0.92\linewidth]{Images/docker_services.png}
+    \caption{Docker Containers Status for the Orchestration Agent}
     \label{fig:docker_services}
 \end{figure}
 
-% ─────────────────────────────────────────────────────────────
+\subsection{Cryptographic Audit Log Verification}
+
+To provide forensic traceability, the \texttt{audit/logger.py} module appends a tamper-evident JSONL record for every system event—grounding decisions, compliance verdicts, HITL confirmations, API calls, and rollback operations—each chained to the preceding entry via SHA-256 hashing. The following screenshot captures a portion of the live \texttt{audit.jsonl} file, showing consecutive entries with their \texttt{prev\_hash} and \texttt{hash} fields, followed by the output of the \texttt{audit/report.py} integrity checker confirming the chain is intact.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.92\linewidth]{Images/audit_log_entries.png}
+    \caption{Cryptographic Audit Log Entries and Integrity Verification}
+    \label{fig:audit_log_entries}
+\end{figure}
+
+% -------------------------------------------------------------
+\section{Explicit Architectural Threat Model}
+\label{sec:threats}
+
+A professional enterprise orchestration platform must explicitly define the architectural threats it mitigates. While traditional cybersecurity focuses on external attackers, our threat model centers on \emph{internal architectural hazards} introduced by the integration of probabilistic AI into deterministic infrastructure.
+
+\begin{itemize}
+    \item \textbf{The Hallucination Threat:} LLMs possess a well-documented tendency to confidently invent plausible but non-existent identifiers (e.g., generating \texttt{port5} when the device only has \texttt{port1} through \texttt{port4}). \emph{Mitigation:} The Trust Boundary completely revokes the AI's authority to resolve objects. The Grounding Engine (Proof 1) enforces live API reconciliation, trapping any hallucinated entity before execution.
+    \item \textbf{The Stale-State \& Race-Condition Threat:} Network state is volatile. Between the moment the LLM generates a valid policy update and the moment the REST API executes it, a concurrent administrator might have already deleted the target policy, creating a race condition. \emph{Mitigation:} The Pre-Mutation Snapshot captures the live baseline mere milliseconds before the PUT request. If the HTTP status is not 200 OK, the orchestrator aborts.
+    \item \textbf{The API Desynchronization Threat:} Firmware upgrades can silently alter REST API schemas, causing previously valid JSON payloads to corrupt firewall state. \emph{Mitigation:} The multi-tiered validation pipeline verifies structural typing and schema compliance \emph{after} LLM generation but \emph{before} execution.
+    \item \textbf{The Partial Failure Threat:} If a multi-policy update fails midway through execution (e.g., due to a network timeout), the firewall is left in an unstable partial state. \emph{Mitigation:} The Transactional Executor treats all mutations as atomic blocks. The rollback capability (Proof 3) guarantees that partial failures are immediately reverted to the known-good pre-state.
+\end{itemize}
+
+% -------------------------------------------------------------
 \section{Architectural Limitations and Honest Assessment}
 \label{sec:limits}
 
 Engineering realism requires acknowledging the architectural limitations of the current implementation. These limitations are not defects; they are the natural boundaries of a well-scoped initial implementation, each representing a concrete direction for future work.
 
 \begin{itemize}
+    \item \textbf{LLM Dependency and Schema Fragility:} The system relies on the Mistral API for intent extraction. A transient API outage renders the NLU layer inoperable. Furthermore, if the foundation model's underlying instruction-following behavior shifts dramatically in a future update, the regex-based JSON extraction could fail, necessitating a fallback local-inference model (e.g., Llama 3 running on-premise).
+    \item \textbf{Semantic Alias Uncertainty in Grounding:} While Levenshtein distance successfully grounds minor typos (e.g., ``interanl'' $\to$ ``internal''), it struggles with deep semantic aliases (e.g., an admin saying ``the accounting subnet'' when the object is named \texttt{finance\_vlan\_10}). True semantic grounding would require embedding the firewall objects into the vector database.
     \item \textbf{Single-Operator Session Scope:} The \texttt{AgentSession} object and its associated state machine are scoped to a single active administrative session. If two operators simultaneously connect to the same Streamlit instance, their session states would interfere. Enterprise deployment would require session multiplexing or per-user session isolation, which Streamlit's multiprocessing model can support through external state stores (e.g., Redis).
     \item \textbf{Synchronous API Communication:} The REST API calls to the FortiGate appliance are currently synchronous. In a high-latency network (WAN-connected remote appliance), each grounding query could introduce significant response delay. The \texttt{httpx} library used in the implementation supports async operations, making migration to an \texttt{asyncio}-based concurrent pipeline a feasible next step.
-    \item \textbf{Offline Dependency:} The deterministic engine relies entirely on live FortiGate API responses for entity grounding and pre-state capture. If the appliance is unreachable, the orchestrator cannot validate any write intent and degrades to a read-only, cached-context mode. A local state cache with time-to-live (TTL) expiry would mitigate this dependency.
+    \item \textbf{Offline Dependency:} The deterministic engine relies entirely on live FortiGate API responses for entity grounding and pre-state capture. If the appliance is unreachable, the orchestrator cannot validate any write intent and degrades to a read-only, cached-context mode.
     \item \textbf{Context Window Scalability:} The NLU prompt injector feeds the live FortiGate policy list into the LLM context window for grounding hints. On enterprise appliances with hundreds or thousands of policies, this injection would exceed the model's context limit. A pagination or hierarchical pre-filtering step is required for production scale.
     \item \textbf{Rollback of CREATE Operations:} As discussed in Section~\ref{subsec:snapshot}, CREATE operations are not automatically reversible by the snapshot engine to prevent orphaned reference chains. This is a deliberate, conservative design decision rather than a technical limitation.
 \end{itemize}
 
-% ─────────────────────────────────────────────────────────────
+% -------------------------------------------------------------
 \section{Future Work}
 \label{sec:future}
 
@@ -608,12 +575,14 @@ Building upon the stable Trust Boundary Architecture established in this dissert
     \item \textbf{Formal Verification of Compliance Rules:} Applying formal methods (such as Boolean satisfiability or model checking) to the compliance rule engine to provide mathematical proofs that the implemented ruleset is complete, non-redundant, and correctly captures the intended security policy—extending the current empirical validation with formal guarantees.
 \end{itemize}
 
-% ─────────────────────────────────────────────────────────────
+% -------------------------------------------------------------
 \section{Chapter Conclusion}
 \label{sec:chap4_conclusion}
 
-This chapter has provided a complete engineering account of the FortiGate AI Agent implementation. The codebase audit documented 8,744 lines of production Python across 13 modules, each occupying a well-defined position within the Trust Boundary Architecture. The three core algorithm listings—the contextual entity grounding orchestrator, the shadowed policy compliance detector, and the rolling SHA-256 audit chain—demonstrated the concrete implementation of the abstract safety guarantees proposed in Chapter 3.
+This chapter has provided a complete, evidence-grounded engineering account of the FortiGate AI Agent implementation. The codebase audit documented 8,744 lines of production Python across 13 modules, each occupying a well-defined position within the Trust Boundary Architecture. The three core algorithm listings—the contextual entity grounding orchestrator, the shadowed policy compliance detector, and the rolling SHA-256 audit chain—demonstrated the concrete implementation of the abstract safety guarantees proposed in Chapter 3.
 
-The three-proof validation campaign provided empirical, trace-level evidence for the three principal architectural claims: that the grounding engine prevents hallucinated or invalid entity identifiers from reaching the execution layer; that the compliance engine deterministically blocks insecure configuration commands without LLM involvement; and that the snapshot-rollback engine, combined with explicit HITL confirmation, guarantees transactional reversibility and operator authority.
+The validation campaign was structured in two phases. The baseline scenario (Section~\ref{subsec:baseline}) first established the system's complete operational cycle under normal, successful conditions, tracing a single natural language command through the NLU layer, Grounding Engine, Compliance Gate, HITL confirmation checkpoint, REST API bridge, and cryptographic audit chain. This baseline grounded all subsequent edge-case proofs in an operational reality that the evaluator could observe directly.
 
-Taken together, the implementation and validation results confirm that the Trust Boundary Architecture is not merely a theoretical construct but a deployable engineering system capable of providing safe, traceable, and reliable AI-assisted firewall administration under realistic operational conditions.
+The four architectural proofs then targeted each principal safety guarantee in isolation: that grounding prevents hallucinated identifiers from reaching the execution layer (Proof 1); that the deterministic compliance engine blocks insecure configurations without any LLM involvement (Proof 2); that the snapshot-rollback engine combined with HITL confirmation guarantees transactional reversibility and operator authority (Proof 3); and that the session state machine handles semantic ambiguity gracefully without premature or incomplete execution (Proof 4).
+
+Taken together, the implementation, visual evidence, and validation results confirm that the Trust Boundary Architecture is not merely a theoretical construct but a deployable, containerized engineering system capable of providing safe, traceable, and reliable AI-assisted firewall administration under realistic operational conditions.

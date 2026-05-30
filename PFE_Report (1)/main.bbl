@@ -11,16 +11,23 @@
      \showURLtrue
 \fi
 
-\bibitem{benson2009network}
-Theophilus Benson, Aditya Akella, and David Maltz.
-\newblock Unraveling the complexity of network management.
-\newblock In {\em Proceedings of the 6th USENIX Symposium on Networked Systems
-  Design and Implementation (NSDI '09)}, pages 335--348. USENIX Association,
-  2009.
-\newblock \ifshowURL {\showURL
-  \path|https://www.usenix.org/events/nsdi09/tech/full_papers/benson/benson.pdf|}\fi.
-\newblock Available:
-  \url{https://www.usenix.org/events/nsdi09/tech/full_papers/benson/benson.pdf}.
+\bibitem{kleos_directory}
+{Kleos Tunisia - Network and Security Systems Integrator}.
+\newblock African Professional Directory, 2026.
+\newblock Independent listing.
+
+\bibitem{kleos_home}
+{Kleos Tunisia}.
+\newblock Kleos -- bienvenue sur notre site.
+\newblock Official company website, 2026.
+\newblock \ifshowURL {\showURL \path|https://www.kleos.tn/|}\fi.
+\newblock Accessed: 28 May 2026.
+
+\bibitem{gartner_firewall}
+{Gartner Inc.}
+\newblock Network security configuration management: Minimizing human error,
+  2019.
+\newblock Industry Research Report.
 
 \bibitem{oppenheimer2003why}
 David Oppenheimer, Archana Ganapathi, and David~A. Patterson.
@@ -32,45 +39,23 @@ David Oppenheimer, Archana Ganapathi, and David~A. Patterson.
 \newblock Available:
   \url{https://www.usenix.org/legacy/events/usits03/tech/full_papers/oppenheimer/oppenheimer.pdf}.
 
-\bibitem{wang2024netconfeval}
-Changjie Wang, Mariano Scazzariello, Alireza Farshin, Simone Ferlin, Dejan
-  Kosti\'{c}, and Marco Chiesa.
-\newblock Netconfeval: Can llms facilitate network configuration?
-\newblock In {\em Proceedings of the 20th International Conference on emerging
-  Networking EXperiments and Technologies (CoNEXT '24)}, pages 90--104.
-  Association for Computing Machinery, 2024.
+\bibitem{benson2009network}
+Theophilus Benson, Aditya Akella, and David Maltz.
+\newblock Unraveling the complexity of network management.
+\newblock In {\em Proceedings of the 6th USENIX Symposium on Networked Systems
+  Design and Implementation (NSDI '09)}, pages 335--348. USENIX Association,
+  2009.
 \newblock \ifshowURL {\showURL
-  \path|https://dl.acm.org/doi/10.1145/3656296|}\fi.
-\newblock Available: \url{https://dl.acm.org/doi/10.1145/3656296}.
-
-\bibitem{mahajan2002understanding}
-Ratul Mahajan, David Wetherall, and Tom Anderson.
-\newblock Understanding bgp misconfiguration.
-\newblock In {\em Proceedings of the 2002 ACM SIGCOMM Conference}, pages 3--16.
-  Association for Computing Machinery, 2002.
-\newblock \ifshowURL {\showURL
-  \path|https://dl.acm.org/doi/10.1145/633025.633027|}\fi.
-\newblock Available: \url{https://dl.acm.org/doi/10.1145/633025.633027}.
-
-\bibitem{burgess1995site}
-Mark Burgess.
-\newblock A site configuration engine.
-\newblock {\em Computing Systems}, 8\penalty0 (3):\penalty0 309--337, 1995.
-\newblock \ifshowURL {\showURL
-  \path|https://www.usenix.org/legacy/publications/compsystems/1995/sum_burgess.pdf|}\fi.
+  \path|https://www.usenix.org/events/nsdi09/tech/full_papers/benson/benson.pdf|}\fi.
 \newblock Available:
-  \url{https://www.usenix.org/legacy/publications/compsystems/1995/sum_burgess.pdf}.
+  \url{https://www.usenix.org/events/nsdi09/tech/full_papers/benson/benson.pdf}.
 
-\bibitem{rahman2018characterizing}
-Akond Rahman and Laurie Williams.
-\newblock Characterizing defective configuration scripts used for continuous
-  deployment.
-\newblock In {\em Proceedings of the 2018 IEEE 11th International Conference on
-  Software Testing, Verification and Validation (ICST)}, pages 34--45. IEEE,
-  2018.
+\bibitem{hashicorp_terraform}
+{HashiCorp}.
+\newblock Terraform: Declarative infrastructure as code, 2024.
 \newblock \ifshowURL {\showURL
-  \path|https://ieeexplore.ieee.org/document/8377755|}\fi.
-\newblock Available: \url{https://ieeexplore.ieee.org/document/8377755}.
+  \path|https://developer.hashicorp.com/terraform|}\fi.
+\newblock Accessed: May 2026.
 
 \bibitem{leivadeas2022survey}
 Aris Leivadeas and Matthias Falkner.
@@ -81,14 +66,46 @@ Aris Leivadeas and Matthias Falkner.
   \path|https://ieeexplore.ieee.org/document/9925251|}\fi.
 \newblock Available: \url{https://ieeexplore.ieee.org/document/9925251}.
 
-\bibitem{sokolowski2024automated}
-Daniel Sokolowski, David Spielmann, and Guido Salvaneschi.
-\newblock Automated infrastructure as code program testing.
-\newblock {\em IEEE Transactions on Software Engineering}, 50\penalty0
-  (7):\penalty0 1585--1599, 2024.
+\bibitem{alshaer2004discovery}
+Ehab~S. Al-Shaer and Hazem~H. Hamed.
+\newblock Discovery of policy anomalies in distributed firewalls.
+\newblock In {\em IEEE INFOCOM 2004 - Conference on Computer Communications -
+  Twenty-Third Annual Joint Conference of the IEEE Computer and Communications
+  Societies}, volume~4, pages 2605--2616. IEEE, 2004.
 \newblock \ifshowURL {\showURL
-  \path|https://ieeexplore.ieee.org/document/10515152|}\fi.
-\newblock Available: \url{https://ieeexplore.ieee.org/document/10515152}.
+  \path|https://ieeexplore.ieee.org/document/1354680|}\fi.
+\newblock Available: \url{https://ieeexplore.ieee.org/document/1354680}.
+
+\bibitem{yuan2006fireman}
+Lihua Yuan, Hao Chen, Jianning Mai, Chen-Nee Chuah, Zhendong Su, Prasant
+  Mohapatra, and Carter Davis.
+\newblock Fireman: A toolkit for firewall modeling and analysis.
+\newblock {\em IEEE Symposium on Security and Privacy}, pages 199--213, 2006.
+\newblock \ifshowURL {\showURL
+  \path|https://ieeexplore.ieee.org/document/1630283|}\fi.
+\newblock Available: \url{https://ieeexplore.ieee.org/document/1630283}.
+
+\bibitem{boutaba2018comprehensive}
+Raouf Boutaba, Mohammad~A. Salahuddin, Noura Limam, Sara Ayoubi, Nashid
+  Shahriar, Felipe Estrada-Solano, and Mazhar Omar.
+\newblock A comprehensive survey on machine learning for networking: evolution,
+  applications and research opportunities.
+\newblock {\em Journal of Internet Services and Applications}, 9\penalty0
+  (1):\penalty0 1--38, 2018.
+\newblock \ifshowURL {\showURL
+  \path|https://doi.org/10.1186/s13174-018-0087-2|}\fi.
+\newblock Available: \url{https://doi.org/10.1186/s13174-018-0087-2}.
+
+\bibitem{wang2024netconfeval}
+Changjie Wang, Mariano Scazzariello, Alireza Farshin, Simone Ferlin, Dejan
+  Kosti\'{c}, and Marco Chiesa.
+\newblock Netconfeval: Can llms facilitate network configuration?
+\newblock In {\em Proceedings of the 20th International Conference on emerging
+  Networking EXperiments and Technologies (CoNEXT '24)}, pages 90--104.
+  Association for Computing Machinery, 2024.
+\newblock \ifshowURL {\showURL
+  \path|https://dl.acm.org/doi/10.1145/3656296|}\fi.
+\newblock Available: \url{https://dl.acm.org/doi/10.1145/3656296}.
 
 \bibitem{lewis2020rag}
 Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petroni, Vladimir
@@ -133,25 +150,6 @@ Alexander Clemm, Laurent Ciavaglia, Lisandro~Zambenedetti Granville, and Jeff
   \path|https://www.rfc-editor.org/info/rfc9315|}\fi.
 \newblock Available: \url{https://www.rfc-editor.org/info/rfc9315}.
 
-\bibitem{alshaer2004discovery}
-Ehab~S. Al-Shaer and Hazem~H. Hamed.
-\newblock Discovery of policy anomalies in distributed firewalls.
-\newblock In {\em IEEE INFOCOM 2004 - Conference on Computer Communications -
-  Twenty-Third Annual Joint Conference of the IEEE Computer and Communications
-  Societies}, volume~4, pages 2605--2616. IEEE, 2004.
-\newblock \ifshowURL {\showURL
-  \path|https://ieeexplore.ieee.org/document/1354680|}\fi.
-\newblock Available: \url{https://ieeexplore.ieee.org/document/1354680}.
-
-\bibitem{yuan2006fireman}
-Lihua Yuan, Hao Chen, Jianning Mai, Chen-Nee Chuah, Zhendong Su, Prasant
-  Mohapatra, and Carter Davis.
-\newblock Fireman: A toolkit for firewall modeling and analysis.
-\newblock {\em IEEE Symposium on Security and Privacy}, pages 199--213, 2006.
-\newblock \ifshowURL {\showURL
-  \path|https://ieeexplore.ieee.org/document/1630283|}\fi.
-\newblock Available: \url{https://ieeexplore.ieee.org/document/1630283}.
-
 \bibitem{navarro2001guided}
 Gonzalo Navarro.
 \newblock A guided tour to approximate string matching.
@@ -159,5 +157,14 @@ Gonzalo Navarro.
 \newblock \ifshowURL {\showURL
   \path|https://dl.acm.org/doi/10.1145/375360.375365|}\fi.
 \newblock Available: \url{https://dl.acm.org/doi/10.1145/375360.375365}.
+
+\bibitem{sokolowski2024automated}
+Daniel Sokolowski, David Spielmann, and Guido Salvaneschi.
+\newblock Automated infrastructure as code program testing.
+\newblock {\em IEEE Transactions on Software Engineering}, 50\penalty0
+  (7):\penalty0 1585--1599, 2024.
+\newblock \ifshowURL {\showURL
+  \path|https://ieeexplore.ieee.org/document/10515152|}\fi.
+\newblock Available: \url{https://ieeexplore.ieee.org/document/10515152}.
 
 \end{thebibliography}

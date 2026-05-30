@@ -1,13 +1,13 @@
 \chapter{System Design and Architecture}
-\markboth{Chapter 3. System Design and Architecture}{Chapter 3. System Design and Architecture}
+
 
 \section{Introduction}
-To bridge the gap between conversational agility and deterministic network infrastructure management, a robust architectural foundation is required. This chapter details the conceptual, structural, and detailed design of our hybrid network orchestration prototype. We translate the theoretical principles of Intent-Based Networking (IBN) established in RFC 9315~\cite{rfc9315} into a concrete software design, isolating the probabilistic natural language processing plane from the deterministic control plane. By grounding our validation rules in classical firewall policy anomaly analysis models such as those proposed by Al-Shaer and Hamed~\cite{alshaer2004discovery} and Yuan et al.~\cite{yuan2006fireman}, we ensure that the hybrid system remains mathematically sound, secure, and fail-safe.
+To bridge the gap between conversational agility and deterministic network infrastructure management, a robust architectural foundation is required. This chapter details the conceptual, structural, and detailed design of our hybrid network orchestration prototype. We translate the theoretical principles of Intent-Based Networking (IBN) \cite{rfc9315} into a concrete software design, isolating the probabilistic natural language processing plane from the deterministic control plane. By grounding our validation rules in classical firewall policy anomaly analysis models \cite{alshaer2004discovery} \cite{yuan2006fireman}, we ensure that the hybrid system remains mathematically sound, secure, and fail-safe.
 
 We begin by specifying the functional and non-functional requirements that govern system safety, functionality, and operational performance. We then present the multi-layered block architecture, illustrating the hard trust boundary separating untrusted AI models from verified execution modules. Next, we detail the NLP and RAG Ingestion Pipeline, showcasing the dynamic classifier and semantic vector database enrichment. Finally, we analyze the translation and execution engine, the security compliance safety gates, the transactional state snapshot-rollback lifecycle, and the structural UML models mapping actor interactions and object-oriented class relationships.
 
-\subsection{Transition from Theoretical Frameworks to Architecture}
-The theoretical paradigms analyzed in Chapter 2---ranging from declarative Intent-Based Networking (IBN) models to Human-in-the-Loop (HITL) control mechanisms---establish the conceptual requirements for our prototype. However, operationalizing these concepts on physical enterprise hardware requires a concrete software design. This section bridges the theoretical demand for validation gates and trust boundaries with the multi-tiered software architecture described below, detailing our routing modules, grounding engines, session state transition matrices, and UML class designs.
+\subsection*{Transition from Theoretical Frameworks to Architecture}
+The theoretical paradigms analyzed in Chapter 2 establish the conceptual requirements for our prototype. However, operationalizing these concepts on physical enterprise hardware requires a concrete software design. This section bridges the theoretical demand for isolation with the multi-tiered software architecture described below, detailing our routing modules, grounding engines, validation matrices, and UML class designs.
 
 \section{System Requirements and Specifications}
 Before translating design principles into software components, we define the strict specifications that govern the system.
@@ -15,51 +15,50 @@ Before translating design principles into software components, we define the str
 \subsection{Functional Requirements}
 The functional requirements represent the core capabilities that the orchestrator must perform to assist the network administrator. They are structured into four main operational pillars:
 \begin{enumerate}
-    \item \textbf{Conversational Interpretation (Read/Write Parsing):} The system must ingest unstructured administrative prompts in English or French, classifying them dynamically into read queries (status, logs, active states) or configuration write intents (policy mutations, object management, system tasks).
-    \item \textbf{Contextual Entity Grounding:} The system must dynamically reconcile ambiguous user references (e.g., ``allow public traffic to the mail server'') with active, physical device elements retrieved via live REST API queries (mapping ``mail server'' to its corresponding IP address object and UUID).
-    \item \textbf{Deterministic Safety Validation:} The system must perform forward-looking compliance checks, verifying that no policy violates predefined corporate standards (e.g., blocking HTTP/Telnet management or preventing public exposure of insecure ports).
-    \item \textbf{Transactional Lifecycle Management:} Before mutating device states, the system must take a complete, localized configuration snapshot. Post-execution, it must verify the active configuration on the physical firewall. If verification fails or communication is severed, the system must automatically execute an inverse rollback to restore the firewall to its pre-state.
+    \item \textbf{Conversational Interpretation (Read/Write Parsing):} The system must ingest unstructured administrative prompts in English or French, classifying them dynamically into read queries or configuration write intents.
+    \item \textbf{Contextual Entity Grounding:} The system must dynamically reconcile ambiguous user references with active, physical device elements retrieved via live REST API queries.
+    \item \textbf{Deterministic Safety Validation:} The system must perform forward-looking compliance checks, verifying that no policy violates predefined corporate standards.
+    \item \textbf{Transactional Lifecycle Management:} Before mutating device states, the system must take a complete, localized configuration snapshot. Post-execution, it must verify the active configuration and automatically execute an inverse rollback if verification fails.
 \end{enumerate}
 
 \subsection{Non-Functional Requirements}
 Non-functional requirements specify the architectural constraints, quality standards, and safety bounds of the implementation:
 \begin{itemize}
-    \item \textbf{Predictability and Safety:} No configuration modification may be executed directly by a probabilistic model. The AI-assisted interface is strictly restricted to intent parsing, leaving all execution, validation, and API interactions to deterministic Python logic.
-    \item \textbf{Operator Oversight (HITL):} All state-mutating transactions require explicit administrative approval. The system must present a side-by-side unified delta diff of the planned changes before requesting confirmation.
-    \item \textbf{Auditability and Log Integrity:} Every session interaction, intermediate intent, validation outcome, and API mutation must be recorded in an audit ledger using a rolling SHA-256 hash sequence to detect unauthorized modifications.
-    \item \textbf{Latency and Responsiveness:} The intent classification and parsing pipeline must execute within a low-latency threshold, ensuring that typical query resolutions complete in under three seconds to prevent administrator operational delay.
+    \item \textbf{Predictability and Safety:} No configuration modification may be executed directly by a probabilistic model. The AI-assisted interface is strictly restricted to intent parsing.
+    \item \textbf{Operator Oversight (HITL):} All state-mutating transactions require explicit administrative approval based on a verifiable delta diff.
+    \item \textbf{Auditability and Log Integrity:} Every session interaction, validation outcome, and API mutation must be recorded in an audit ledger using a rolling SHA-256 hash sequence.
+    \item \textbf{Latency and Responsiveness:} The intent classification and parsing pipeline must execute within a low-latency threshold to prevent administrator operational delay.
 \end{itemize}
 
 \section{Global System Architecture}
-The core design principle of our system is the strict, multi-layered segregation of responsibilities, directly addressing the limitations of unconstrained language models highlighted in NetConfEval~\cite{wang2024netconfeval}. We partition the application into two isolated logical zones: the \textbf{Probabilistic Interpretation Plane} (leveraging NLU models and semantic vector indexes) and the \textbf{Deterministic Control Plane} (implemented strictly in Python code using deterministic schemas).
+The core design principle of our system is the strict, multi-layered segregation of responsibilities, directly addressing the limitations of unconstrained language models highlighted in NetConfEval~\cite{wang2024netconfeval}. We partition the application into two isolated logical zones: the \textbf{Probabilistic Interpretation Plane} and the \textbf{Deterministic Control Plane}.
 
-This structural segregation is illustrated in Figure~\ref{fig:trust_boundary_arch}.
+This structural segregation is visually established by the \textbf{Trust Boundary}, illustrated in Figure~\ref{fig:trust_boundary_arch}.
 
-\begin{figure}[H]
+\begin{figure}[htbp]
     \centering
     \makebox[\textwidth][c]{
     \begin{tikzpicture}[
         scale=0.78, every node/.style={transform shape, font=\sffamily\small},
-        blockprob/.style={rectangle, draw=blue!70!black, thick, fill=blue!3, text width=3.0cm, align=center, minimum height=1.2cm, rounded corners},
-        blockdet/.style={rectangle, draw=green!60!black, thick, fill=green!3, text width=3.0cm, align=center, minimum height=1.2cm, rounded corners},
-        database/.style={cylinder, draw=purple!70!black, thick, fill=purple!3, text width=2.0cm, align=center, minimum height=1.3cm, aspect=0.22, shape border rotate=90},
-        firewall/.style={cylinder, draw=orange!80!black, thick, fill=orange!3, text width=2.0cm, align=center, minimum height=1.3cm, aspect=0.22, shape border rotate=90},
-        arrow/.style={->, thick, draw=black, >=stealth},
-        doublearrow/.style={<->, thick, draw=black, >=stealth},
-        boundary/.style={draw=red!70, dashed, ultra thick, fill=red!3, fill opacity=0.05, rounded corners}
+        blockprob/.style={rectangle, draw=black, thick, fill=gray!5, text width=3.0cm, align=center, minimum height=1.2cm, rounded corners},
+        blockdet/.style={rectangle, draw=black, thick, fill=white, text width=3.0cm, align=center, minimum height=1.2cm, rounded corners},
+        database/.style={cylinder, draw=black, thick, fill=gray!10, text width=2.0cm, align=center, minimum height=1.3cm, aspect=0.22, shape border rotate=90},
+        firewall/.style={cylinder, draw=black, thick, fill=white, text width=2.0cm, align=center, minimum height=1.3cm, aspect=0.22, shape border rotate=90},
+        arrow/.style={->, thick, draw=black!80, >=stealth},
+        doublearrow/.style={<->, thick, draw=black!80, >=stealth},
         ]
         
-        % Probabilistic Zone (Blue Theme)
+        % Probabilistic Zone 
         \node[blockprob] (user) at (0, 0) {User Natural\\Language Prompt};
         \node[blockprob] (router) at (4.8, 0) {Dynamic Classifier\\(agent/router.py)};
         \node[database] (chroma) at (4.8, 2.6) {Vector Database\\(ChromaDB RAG)};
         \node[blockprob] (nlu) at (9.6, 0) {NLU Interpreter\\(nlu\_interpreter.py)};
         
-        % Red Gutter dividing the Trust Boundary (Drawn behind the labels)
-        \draw[red!80, dashed, ultra thick] (12.0, 3.6) -- (12.0, -5.8);
-        \node[fill=white, inner sep=2pt, rotate=270, text=red!80, font=\sffamily\scriptsize\bfseries] at (12.0, 0.8) {HARD TRUST BOUNDARY};
+        % Gutter dividing the Trust Boundary
+        \draw[black!80, dashed, ultra thick] (12.0, 3.6) -- (12.0, -5.8);
+        \node[fill=white, inner sep=2pt, rotate=270, text=black!80, font=\sffamily\scriptsize\bfseries] at (12.0, 0.8) {HARD TRUST BOUNDARY};
         
-        % Deterministic Zone (Green/Orange Theme)
+        % Deterministic Zone
         \node[blockdet] (ground) at (14.4, 0) {Entity Grounder\\(nlu\_grounder.py)};
         \node[blockdet] (val) at (14.4, -2.6) {Safety \& Compliance\\(compliance.py)};
         \node[blockdet] (hitl) at (4.8, -2.6) {HITL Portal\\(streamlit\_app.py)};
@@ -78,29 +77,101 @@ This structural segregation is illustrated in Figure~\ref{fig:trust_boundary_arc
         \draw[arrow] (hitl) -- node[above, fill=white, inner sep=2pt, font=\sffamily\scriptsize] {Admin Consent} (exec);
         \draw[arrow] (exec) -- (fgt);
         
-        % Grounder dynamic checking routed around the right side to prevent clashing diagonal lines
-        \draw[doublearrow, draw=orange!80!black] (ground.east) -- ++(0.9, 0) |- node[right, pos=0.25, font=\sffamily\scriptsize\bfseries, text=orange!80!black] {Live State Query} (fgt.east);
+        % Grounder dynamic checking routed around the right side
+        \draw[doublearrow, draw=black!60] (ground.east) -- ++(0.9, 0) |- node[right, pos=0.25, font=\sffamily\scriptsize\bfseries, text=black!70] {Live State Query} (fgt.east);
         
     \end{tikzpicture}
     }
-    \caption{Multi-Tiered Block Architecture representing the Hard Trust Boundary}
+    \caption{Block Architecture of the Trust Boundary}
     \label{fig:trust_boundary_arch}
 \end{figure}
 
 The \textbf{Trust Boundary} defines the exact line where probabilistic parsing terminates and deterministic verification begins. Once the NLU Interpreter generates a structured intermediate representation, the AI model is completely suspended, and the Python control plane assumes full execution authority. This prevents LLM hallucinations from ever manifesting as physical device mutations.
 
-\section{The NLP and RAG Ingestion Pipeline}
-The system entry point is managed entirely within the Probabilistic Interpretation Plane. The user's unstructured natural language prompt must be parsed and augmented with highly specific technical context before any system intent is generated.
-
-This ingestion flow is structured as a two-stage routing and context enrichment pipeline, as illustrated in Figure~\ref{fig:rag_pipeline}.
+\subsection{End-to-End Operational Workflow}
+The lifecycle of a single administrative request follows a precise, multi-stage workflow flowing through the architecture defined above. Figure~\ref{fig:agent_workflow} illustrates this operational flow.
 
 \begin{figure}[H]
     \centering
+    \resizebox{0.70\textwidth}{!}{
     \begin{tikzpicture}[
-        scale=0.85, every node/.style={transform shape, font=\sffamily\small},
-        block/.style={rectangle, draw=blue!70!black, thick, fill=blue!5, text width=3.8cm, align=center, minimum height=1.0cm, rounded corners},
-        db/.style={cylinder, draw=purple!70!black, thick, fill=purple!5, text width=2.4cm, align=center, minimum height=1.2cm, aspect=0.25, shape border rotate=90},
-        arrow/.style={->, thick, draw=black, >=stealth}
+        every node/.style={font=\sffamily\small},
+        stepbox/.style={rectangle, draw=black!80, thick, fill=white, text width=3.4cm,
+            align=center, minimum height=1.1cm, rounded corners=4pt},
+        decision/.style={diamond, draw=black!80, thick, fill=gray!8, text width=1.8cm,
+            align=center, font=\sffamily\scriptsize, aspect=1.5},
+        arrow/.style={->, thick, draw=black!80, >=stealth},
+        lbl/.style={font=\sffamily\scriptsize, fill=white, inner sep=1.5pt},
+        planelabel/.style={font=\sffamily\scriptsize\bfseries, text=black!50},
+    ]
+        %% Background plane bands (expanded for padding)
+        \fill[blue!4, rounded corners=4pt] (-2.5, 1.8) rectangle (8.5, -5.1);
+        \fill[orange!6, rounded corners=4pt] (-2.5, -5.5) rectangle (8.5, -15.2);
+
+        %% Plane labels — moved to the far right to avoid center arrows
+        \node[planelabel] at (6.0, 1.4) {PROBABILISTIC PLANE};
+        \node[planelabel] at (6.0, -5.9) {DETERMINISTIC PLANE};
+
+        %% Trust Boundary line
+        \draw[draw=black!70, very thick] (-2.5, -5.3) -- (8.5, -5.3);
+        \node[planelabel, above] at (6.0, -5.3) {TRUST BOUNDARY};
+
+        %% Column A — Probabilistic steps
+        \node[stepbox] (input)  at (0,  0.0)  {\textbf{1. Input}\\NL Prompt};
+        \node[stepbox] (rag)    at (0, -2.4)  {\textbf{2. RAG Retrieval}\\Semantic Context};
+        \node[stepbox] (nlu)    at (0, -4.8)  {\textbf{3. NLU Parsing}\\JSON Payload};
+
+        %% Column A continued — Deterministic steps
+        \node[stepbox] (val)    at (0, -7.4)  {\textbf{4. Validation}\\Compliance \& Diff};
+        \node[decision] (hitl)  at (4.5, -7.4) {Operator\\Approve?};
+        \node[stepbox] (exec)   at (4.5, -10.0) {\textbf{5. Execution}\\FortiGate REST API};
+        \node[stepbox] (verify) at (4.5,-12.4) {\textbf{6. Verification}\\Post-State Check};
+        \node[stepbox] (done)   at (4.5,-14.4) {\textbf{Done}\\Audit Log Entry};
+
+        %% Main flow arrows
+        \draw[arrow] (input) -- (rag);
+        \draw[arrow] (rag)   -- (nlu);
+        \draw[arrow] (nlu)   -- node[right, lbl]{Config Diff} (val);
+        \draw[arrow] (val)   -- node[above, lbl, yshift=2pt]{For Review} (hitl);
+        \draw[arrow] (hitl)  -- node[right, lbl]{Approved} (exec);
+        \draw[arrow] (exec)  -- (verify);
+        \draw[arrow] (verify) -- node[right, lbl]{State OK} (done);
+
+        %% Reject loop — routed UP between the two columns to completely avoid boxes
+        \draw[arrow] (hitl.north) -- ++(0, 0.8) -| node[pos=0.25, above, lbl]{Rejected} (2.4, 0) -- (input.east);
+
+        %% Rollback path — goes RIGHT of the diagram
+        \draw[arrow, dashed] (verify.east) -- ++(1.0, 0)
+            |- node[right, lbl, pos=0.25]{Drift: Rollback} (exec.east);
+
+    \end{tikzpicture}
+    }
+    \caption{Operational Workflow of the Agent}
+    \label{fig:agent_workflow}
+\end{figure}
+
+To anchor this macro-architecture in physical implementation, Figure~\ref{fig:docker_services_ch3} presents the operational deployment view, illustrating how these discrete architectural planes are realized as containerized microservices operating in isolation.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.70\textwidth]{Images/docker_services.png}
+    \caption{Containerized Services Architecture}
+    \label{fig:docker_services_ch3}
+\end{figure}
+
+\section{The NLP and RAG Ingestion Pipeline}
+The system entry point is managed entirely within the Probabilistic Interpretation Plane. The user's unstructured natural language prompt must be parsed and augmented with highly specific technical context before any system intent is generated.
+
+This ingestion flow is structured as a two-stage routing and context enrichment pipeline, as illustrated in Figure~\ref{fig:rag_pipeline_ch3}.
+
+\begin{figure}[H]
+    \centering
+    \resizebox{0.70\textwidth}{!}{
+    \begin{tikzpicture}[
+        every node/.style={transform shape, font=\sffamily\small},
+        block/.style={rectangle, draw=black!80, thick, fill=gray!5, text width=3.8cm, align=center, minimum height=1.0cm, rounded corners},
+        db/.style={cylinder, draw=black!80, thick, fill=gray!10, text width=2.4cm, align=center, minimum height=1.2cm, aspect=0.25, shape border rotate=90},
+        arrow/.style={->, thick, draw=black!80, >=stealth}
         ]
         
         \node[block] (prompt) at (0, 0) {User Prompt\\(Conversational Text)};
@@ -112,15 +183,16 @@ This ingestion flow is structured as a two-stage routing and context enrichment 
         \node[block] (json) at (5.2, -7.2) {Raw Intent Schema\\(JSON Payload)};
         
         \draw[arrow] (prompt) -- (embed);
-        \draw[arrow] (embed) -- node[above] {Query Vector} (chroma);
-        \draw[arrow] (chroma) -- node[right] {Similarity Search} (retrieve);
-        \draw[arrow] (retrieve) -- node[above] {Enriched Text} (prompteng);
+        \draw[arrow] (embed) -- node[above, yshift=2pt, font=\sffamily\scriptsize] {Query Vector} (chroma);
+        \draw[arrow] (chroma) -- node[right, xshift=2pt, font=\sffamily\scriptsize] {Similarity Search} (retrieve);
+        \draw[arrow] (retrieve) -- node[above, yshift=2pt, font=\sffamily\scriptsize] {Enriched Text} (prompteng);
         \draw[arrow] (prompteng) -- (llm);
-        \draw[arrow] (llm) -- node[above] {Generates} (json);
+        \draw[arrow] (llm) -- node[above, yshift=2pt, font=\sffamily\scriptsize] {Generates} (json);
         
     \end{tikzpicture}
-    \caption{NLP and RAG Ingestion and Context Enrichment Pipeline}
-    \label{fig:rag_pipeline}
+    }
+    \caption{NLU and RAG Ingestion Pipeline}
+    \label{fig:rag_pipeline_ch3}
 \end{figure}
 
 \subsection{Dynamic Intent Routing Engine}
@@ -136,7 +208,7 @@ The Dynamic Router (\texttt{agent/router.py}) acts as the traffic controller of 
 
 The routing separation and decision logic is visually formalized in the workflow shown in Figure~\ref{fig:routing_workflow}.
 
-\begin{figure}[H]
+\begin{figure}[htbp]
     \centering
     \begin{tikzpicture}[
         node distance=2.2cm,
@@ -165,7 +237,7 @@ The routing separation and decision logic is visually formalized in the workflow
         \draw[arrow, dashed] (ambig.west) -- (-6.5, -5.0) -- node[left, pos=0.5] {Clarify Loop} (-6.5, 0) -- (input.west);
         
     \end{tikzpicture}
-    \caption{Read/Write Separation and Intent Routing Workflow}
+    \caption{Intent Routing Workflow}
     \label{fig:routing_workflow}
 \end{figure}
 
@@ -187,6 +259,8 @@ For queries classified as \texttt{KNOWLEDGE} or requiring structural references,
 Once a write mutation is routed, the translation engine in \texttt{agent/nlu\_interpreter.py} prompts the Mistral model to translate the natural language command into a strictly structured \texttt{RawIntentSchema} JSON payload, defining the intent type, policy IDs, and list of changes (deltas).
 
 \subsection{Contextual Entity Grounding Algorithm}
+In operational environments, administrators rarely use canonical firewall object identifiers. A generic LLM orchestrator might generate syntactically valid but operationally catastrophic payloads due to hallucinated or approximations of identifiers (e.g., guessing ``port1'' instead of the actual physical interface ``wan1''). To prevent this, the architecture explicitly prohibits the AI from assigning object IDs.
+
 Because human prompts refer to firewall interfaces, address objects, and policies conversationally (e.g., ``the public server'' or ``our internal switch''), the NLU interpreter outputs raw textual variables. The entity grounder (\texttt{agent/nlu\_grounder.py}) reconciles these ambiguous references with live physical FortiOS object names.
 
 Reconciliation is executed using a normalized Levenshtein distance ratio. Let $S_{\text{user}}$ represent the extracted string parameter and $S_{\text{device}}$ represent the actual name of a live physical firewall object. The grounding engine, implemented in the \texttt{agent/nlu\_grounder.py} module, calculates the similarity ratio as:
@@ -199,7 +273,7 @@ An entity is matched and resolved successfully to a physical object if it satisf
 \end{equation}
 This grounding check is programmatic logic within the \texttt{NLUObjectGrounder} class. If multiple objects satisfy this condition, the grounder flags the parameter as ambiguous, halts execution, and raises a \texttt{GroundingIssue}, which triggers the conversational clarification loop. The grounding stages of NLU extraction, live device lookup, and intent normalization are illustrated in Figure~\ref{fig:grounding_pipeline}, while the underlying programmatic logic is formalized in Algorithm~\ref{alg:grounding}.
 
-\begin{figure}[H]
+\begin{figure}[htbp]
     \centering
     \begin{tikzpicture}[
         node distance=2.5cm,
@@ -219,11 +293,11 @@ This grounding check is programmatic logic within the \texttt{NLUObjectGrounder}
         \draw[arrow] (recon) -- node[above, pos=0.5, badge] {Resolved IDs} (norm);
         
     \end{tikzpicture}
-    \caption{Entity Grounding and Live Reconciliation Pipeline}
+    \caption{Entity Grounding Pipeline}
     \label{fig:grounding_pipeline}
 \end{figure}
 
-\begin{algorithm}[H]
+\begin{algorithm}[htpb]
 \caption{Dynamic Entity Grounding and Reconciliation}\label{alg:grounding}
 \let\AND\undefined
 \let\OR\undefined
@@ -253,14 +327,16 @@ This grounding check is programmatic logic within the \texttt{NLUObjectGrounder}
 \end{algorithmic}
 \end{algorithm}
 
+This grounding process therefore transforms conversational ambiguity into deterministic infrastructure references. The LLM's proposed configuration is now formally mapped to reality, rendering it safe for subsequent compliance evaluation.
+
 \subsection{Operational Request Lifecycle}
 The orchestration platform is architected as a sequential state machine. Every mutation request traverses a rigorous operational lifecycle designed to enforce security policies and maintain configuration integrity seamlessly.
 
 \begin{table}[H]
     \centering
-    \caption{Lifecycle Phases of the Operational Request Pipeline}
+    \caption{Lifecycle Phases of the Request Pipeline}
     \label{tab:pipeline_phases}
-    \renewcommand{\arraystretch}{1.5}
+    \renewcommand{\arraystretch}{1.2}
     \small
     \begin{tabular}{|l|p{10.5cm}|}
         \hline
@@ -286,15 +362,17 @@ The orchestration platform is architected as a sequential state machine. Every m
 \end{table}
 
 \section{Security, Compliance, and Transactional Validation}
+Even perfectly grounded and syntactically valid intents carry severe operational risks if they violate corporate security postures (e.g., successfully mapping a request to expose SSH to the public internet). Because the LLM lacks absolute security awareness, it cannot be trusted to independently evaluate the risk of its own generated payloads.
+
 Once an intent is fully grounded and translated, it is routed to the deterministic validation pipeline in the control plane before reaching the firewall API.
 
 Before any configuration payload reaches the execution layer, it is subjected to multi-tiered validation. The \textbf{Validation Engine} enforces structural integrity, ensuring that IP addresses conform to proper CIDR notations and port definitions align perfectly with standard protocols. Concurrently, the \textbf{Compliance Engine} evaluates the administrative intent against strict organizational security postures.
 
 \begin{table}[H]
     \centering
-    \caption{Multi-Tiered Validation and Security Enforcement Layers}
+    \caption{Validation and Security Enforcement Layers}
     \label{tab:validation_stages}
-    \renewcommand{\arraystretch}{1.5}
+    \renewcommand{\arraystretch}{1.2}
     \small
     \begin{tabular}{|l|l|p{6.5cm}|}
         \hline
@@ -345,18 +423,16 @@ The compliance engine enforces three core validation safety checks:
 \subsection{Session Context and Conceptual State Transitions}
 To maintain state consistency during multi-turn interactions (such as clarifications or awaiting administrative confirmation), the orchestrator manages a conceptual session lifecycle. Rather than relying on a strict, hardware-bound finite state machine (FSM) implementation, this state machine represents the logical, session-driven context transitions managed dynamically by the \texttt{AgentSession} class. These conceptual states and their permitted transitions are illustrated in Figure~\ref{fig:state_machine}.
 
-To enable robust interaction, the system supports clarification continuity and partial intent persistence. When the user provides an incomplete or ambiguous intent (e.g., "Allow HTTP access" without specifying a destination address), the system transitions to the \texttt{CLARIFY} state. The partial parameters are persisted in memory within the \texttt{SessionContext} class (implemented in \texttt{agent/session\_context.py}). Upon the next user turn, the input is merged with the existing context and re-grounded, ensuring deterministic multi-turn validation without forcing the administrator to restart the command sequence.
-
-\begin{figure}[H]
+\begin{figure}[htbp]
     \centering
     \begin{tikzpicture}[
         node distance=3.0cm,
         every node/.style={font=\sffamily\small},
-        stateidle/.style={circle, draw=blue!70!black, thick, fill=blue!3, text width=2.0cm, align=center, minimum height=2.0cm},
-        stateclarify/.style={circle, draw=yellow!60!black, thick, fill=yellow!3, text width=2.0cm, align=center, minimum height=2.0cm},
-        stateconfirm/.style={circle, draw=orange!60!black, thick, fill=orange!3, text width=2.0cm, align=center, minimum height=2.0cm},
-        staterollback/.style={circle, draw=red!70!black, thick, fill=red!3, text width=2.0cm, align=center, minimum height=2.0cm},
-        arrow/.style={->, thick, draw=black, >=stealth}
+        stateidle/.style={circle, draw=black!80, thick, fill=gray!5, text width=2.0cm, align=center, minimum height=2.0cm},
+        stateclarify/.style={circle, draw=black!80, thick, fill=gray!10, text width=2.0cm, align=center, minimum height=2.0cm},
+        stateconfirm/.style={circle, draw=black!80, thick, fill=white, text width=2.0cm, align=center, minimum height=2.0cm},
+        staterollback/.style={circle, draw=black!80, thick, fill=gray!15, text width=2.0cm, align=center, minimum height=2.0cm},
+        arrow/.style={->, thick, draw=black!80, >=stealth}
         ]
         
         \node[stateidle] (idle) at (0, 0) {IDLE\\(Ready)};
@@ -375,13 +451,18 @@ To enable robust interaction, the system supports clarification continuity and p
         \draw[arrow] (rollback) to node[above, font=\sffamily\scriptsize, fill=white, inner sep=2.5pt] {State Restored} (idle);
         
     \end{tikzpicture}
-    \caption{State Transition Diagram for multi-turn Administrator Sessions}
+    \caption{State Transition Diagram for Sessions}
     \label{fig:state_machine}
 \end{figure}
+
+
+To enable robust interaction, the system supports clarification continuity and partial intent persistence. When the user provides an incomplete or ambiguous intent (e.g., "Allow HTTP access" without specifying a destination address), the system transitions to the \texttt{CLARIFY} state. The partial parameters are persisted in memory within the \texttt{SessionContext} class (implemented in \texttt{agent/session\_context.py}). Upon the next user turn, the input is merged with the existing context and re-grounded, ensuring deterministic multi-turn validation without forcing the administrator to restart the command sequence.
 
 This session lifecycle manages the safety invariant that the session context cannot transition from \texttt{IDLE} directly to a device mutation without systematically transitioning through the validated and operator-reviewed \texttt{CONFIRM} state.
 
 \subsection{Lifecycle Management \& Transactional Recovery}
+Enterprise network configurations are inherently volatile. Even after rigorous grounding and compliance validation, applying a payload to a live FortiGate appliance can fail due to race conditions, concurrent administrative changes, or hidden firmware constraints. To protect the infrastructure from being left in an unstable partial state, the system must treat every change as an atomic operation.
+
 To maintain database and network state alignment, the orchestrator encapsulates mutations within a \textbf{Transactional Execution Loop}, implementing a strict try-verify-rollback strategy:
 \begin{enumerate}
     \item \textbf{Pre-Mutation Snapshot:} Captures the target configuration parameters (e.g., current ruleset ordering, specific policy parameters) and stores them in a localized stack buffer managed by the \texttt{SnapshotStore} class (\texttt{agent/snapshot.py}).
@@ -399,7 +480,7 @@ While the transactional loop mitigates deployment risks, physical networking con
 
 This fail-safe validation and rollback process is visually modeled in Figure~\ref{fig:verification_workflow}.
 
-\begin{figure}[H]
+\begin{figure}[htbp]
     \centering
     \begin{tikzpicture}[
         node distance=2.2cm,
@@ -427,7 +508,7 @@ This fail-safe validation and rollback process is visually modeled in Figure~\re
         \draw[arrow, dashed] (rollback.west) -- (0, -2.5) -- node[left, pos=0.8] {Restore} (snap.south);
         
     \end{tikzpicture}
-    \caption{Transactional Verification and Lifecycle Management Workflow}
+    \caption{Verification and Lifecycle Workflow}
     \label{fig:verification_workflow}
 \end{figure}
 
@@ -438,7 +519,112 @@ To ensure all configuration changes are completely auditable and detectable agai
 \end{equation}
 This validation formula, implemented in our audit logging wrapper, ensures that any unauthorized manual edits to the local log files in \texttt{logs/audit.jsonl} immediately invalidate the sequential hash sequence. It provides local integrity verification for audit trails rather than absolute cryptographic non-repudiation or blockchain-grade guarantees.
 
-\section{UML Use Case and Structural Modeling}
+\subsection{Human-in-the-Loop Verification Interface}
+The final enforcement of the Trust Boundary occurs at the operator portal. Before any configuration payload is dispatched to the FortiGate REST API, the validation engine surfaces a unified delta diff within the Streamlit frontend. Figure~\ref{fig:hitl_portal} illustrates this operational staging area, where the deterministic control plane suspends execution until explicit consent is granted by the human operator.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.9\textwidth]{Images/streamlit_interface.png}
+    \caption{The HITL Verification Portal}
+    \label{fig:hitl_portal}
+\end{figure}
+
+\section{Architectural Sequence Trace}
+To synthesize the isolated subsystems described throughout this chapter, we present a theoretical architectural trace of a single administrative intent. This sequence illustrates exactly how the hybrid orchestrator processes a realistic, multi-stage mutation request while enforcing the Trust Boundary at every step.
+
+Consider the operational scenario where the network administrator issues the natural language command: \textit{``Block all SSH access from the public internet.''} 
+
+Unlike a legacy automation script, which blindly executes predefined YAML tasks, or a fully autonomous AI agent, which might unpredictably alter live infrastructure, our architecture strictly bounds the AI's inferential authority to the probabilistic plane. The following narration traces the architectural lifecycle of this request.
+\begin{enumerate}
+    \item \textbf{Probabilistic Translation}: The system first routes the request to the LLM. The LLM retrieves context via RAG to understand that ``public internet'' maps to external ingress traffic, generating a structural representation of the intent. Crucially, the AI is explicitly prohibited from mutating the network here.
+    \item \textbf{Deterministic Grounding}: The output crosses the Trust Boundary into the control plane. The grounder queries the live FortiGate API, translating the LLM's generic ``public internet'' into the precise physical interface ID (e.g., \texttt{wan1}) and ``SSH'' into TCP port \texttt{22}.
+    \item \textbf{Safety Verification}: The grounded payload is passed to the Compliance Engine. The engine algorithmically confirms that creating this deny policy does not violate implicit-deny rules or expose legacy protocols.
+    \item \textbf{Transactional Enforcement}: The final operational payload is frozen and presented to the administrator via the Streamlit interface. Only upon explicit administrative consent does the Transactional Executor capture a pre-mutation snapshot and dispatch the atomic REST API call.
+    \item \textbf{State Recovery}: The executor immediately performs post-write verification. If the API timeout is breached or configuration drift is detected, the snapshot is automatically restored, returning the appliance to its last known stable state.
+\end{enumerate}
+
+This end-to-end operational lifecycle, spanning from conversational ambiguity to rigorous infrastructure mutation, is formally modeled in the sequence diagram in Figure~\ref{fig:sequence_diagram}.
+
+\begin{figure}[htbp]
+    \centering
+    \resizebox{\textwidth}{!}{
+    \begin{tikzpicture}[
+        every node/.style={font=\sffamily\small},
+        lifeline/.style={thick, dashed, draw=black!60},
+        actorbox/.style={rectangle, draw=black!80, thick, fill=gray!10,
+            minimum width=3.0cm, minimum height=0.9cm, align=center, rounded corners},
+        msgarrow/.style={->, thick, draw=black!80, >=stealth},
+        msgarrowback/.style={<-, thick, draw=black!80, >=stealth}
+        ]
+
+        % Actors
+        \node[actorbox] (admin) at (0,    0) {Administrator};
+        \node[actorbox] (prob)  at (6.5,  0) {Probabilistic\\NLU \& RAG};
+        \node[actorbox] (det)   at (13.0, 0) {Deterministic\\Validation};
+        \node[actorbox] (trans) at (19.5, 0) {Transactional\\Executor};
+        \node[actorbox] (fgt)   at (26.0, 0) {FortiGate\\Appliance};
+
+        % Lifelines
+        \draw[lifeline] (0,    -0.45) -- (0,    -14.5);
+        \draw[lifeline] (6.5,  -0.45) -- (6.5,  -14.5);
+        \draw[lifeline] (13.0, -0.45) -- (13.0, -14.5);
+        \draw[lifeline] (19.5, -0.45) -- (19.5, -14.5);
+        \draw[lifeline] (26.0, -0.45) -- (26.0, -14.5);
+
+        % 1
+        \draw[msgarrow] (0,-1.2) -- node[above,font=\sffamily\scriptsize,fill=white,inner sep=1pt]
+            {1. Block SSH from Internet} (6.5,-1.2);
+
+        % 2 Self-loop
+        \draw[msgarrow] (6.5,-2.2) -- ++(2.0,0) |-
+            node[right,font=\sffamily\scriptsize,fill=white,inner sep=1pt,align=left]
+            {2. RAG Retrieval \& LLM Translation} (6.5,-3.2);
+
+        % 3
+        \draw[msgarrow] (6.5,-4.0) -- node[above,font=\sffamily\scriptsize,fill=white,inner sep=1pt]
+            {3. Raw JSON Intent} (13.0,-4.0);
+
+        % 4
+        \draw[msgarrow] (13.0,-5.0) -- node[above,font=\sffamily\scriptsize,fill=white,inner sep=1pt]
+            {4. Live State Fetch (Grounding)} (26.0,-5.0);
+
+        % 5 return
+        \draw[msgarrowback] (13.0,-6.0) -- node[above,font=\sffamily\scriptsize,fill=white,inner sep=1pt]
+            {5. Object IDs Returned (e.g. wan1)} (26.0,-6.0);
+
+        % 6 Self-loop
+        \draw[msgarrow] (13.0,-7.0) -- ++(2.0,0) |-
+            node[right,font=\sffamily\scriptsize,fill=white,inner sep=1pt,align=left]
+            {6. Compliance Checks (0.0.0.0/0 filter)} (13.0,-8.0);
+
+        % 7 return to Admin
+        \draw[msgarrowback] (0,-9.0) -- node[above,font=\sffamily\scriptsize,fill=white,inner sep=1pt]
+            {7. Present Delta Diff (HITL)} (13.0,-9.0);
+
+        % 8
+        \draw[msgarrow] (0,-10.0) -- node[above,font=\sffamily\scriptsize,fill=white,inner sep=1pt]
+            {8. Explicit Admin Authorization} (19.5,-10.0);
+
+        % 9 Self-loop
+        \draw[msgarrow] (19.5,-11.0) -- ++(2.0,0) |-
+            node[right,font=\sffamily\scriptsize,fill=white,inner sep=1pt,align=left]
+            {9. Capture State Snapshot} (19.5,-12.0);
+
+        % 10
+        \draw[msgarrow] (19.5,-12.8) -- node[above,font=\sffamily\scriptsize,fill=white,inner sep=1pt]
+            {10. Atomic REST Mutation} (26.0,-12.8);
+
+        % 11 return
+        \draw[msgarrowback] (19.5,-13.8) -- node[above,font=\sffamily\scriptsize,fill=white,inner sep=1pt]
+            {11. Post-Write Verification} (26.0,-13.8);
+
+    \end{tikzpicture}
+    }
+    \caption{Sequence Diagram: Orchestrating a Security Mutation}
+    \label{fig:sequence_diagram}
+\end{figure}
+
+\section{Formal System Modeling}
 To map the active interfaces and object relationships that control the transactional pipeline, we provide formal Unified Modeling Language (UML) notations of the system.
 
 The interaction boundaries between the system operator (network administrator), the hybrid orchestration agent, and the physical FortiGate firewall are modeled in the global Use Case diagram shown in Figure~\ref{fig:uml_use_case}.
@@ -446,35 +632,34 @@ The interaction boundaries between the system operator (network administrator), 
 \begin{figure}[H]
     \centering
     \begin{tikzpicture}[
-        scale=0.85, every node/.style={transform shape},
-        actorhead/.style={draw=blue!70!black, thick, circle, minimum size=0.6cm, fill=blue!5},
-        firewallbox/.style={draw=orange!70!black, thick, rectangle, minimum width=0.9cm, minimum height=0.9cm, rounded corners, fill=orange!5},
-        usecase/.style={draw=blue!70!black, thick, ellipse, minimum width=3.4cm, minimum height=1.0cm, align=center, fill=white, font=\sffamily\small},
+        scale=0.65, every node/.style={transform shape},
+        actorhead/.style={draw=black!80, thick, circle, minimum size=0.6cm, fill=gray!5},
+        firewallbox/.style={draw=black!80, thick, rectangle, minimum width=0.9cm, minimum height=0.9cm, rounded corners, fill=white},
+        usecase/.style={draw=black!80, thick, ellipse, minimum width=3.4cm, minimum height=1.0cm, align=center, fill=white, font=\sffamily\small},
         systembox/.style={draw=gray!50, thick, rectangle, minimum width=9.5cm, minimum height=12.2cm, fill=gray!5, rounded corners},
-        arrow/.style={-, thick, draw=black},
-        include/.style={->, dashed, thick, draw=black, >=stealth, font=\sffamily\scriptsize}
+        arrow/.style={-, thick, draw=black!80},
+        include/.style={->, dashed, thick, draw=black!80, >=stealth, font=\sffamily\scriptsize}
         ]
         
         % Boundaries \& System Container
         \node[systembox] (sys) at (5.0, -5.7) {};
-        %\node[font=\sffamily\small\bfseries\color{gray!80}] at (5.0, -0.0) {FortiGate Orchestrator Boundary};
         
         % Operator Actor (Stick Figure Head)
         \node[actorhead] (admin) at (-2.0, -5.0) {};
         % Stick Figure Body \& Limbs
-        \draw[thick, draw=blue!70!black] (admin.south) -- ++(0, -0.6) coordinate (torso);
-        \draw[thick, draw=blue!70!black] (torso) -- ++(-0.3, -0.5);
-        \draw[thick, draw=blue!70!black] (torso) -- ++(0.3, -0.5);
-        \draw[thick, draw=blue!70!black] (admin.south) ++(0, -0.15) -- ++(-0.4, 0.1);
-        \draw[thick, draw=blue!70!black] (admin.south) ++(0, -0.15) -- ++(0.4, 0.1);
+        \draw[thick, draw=black!80] (admin.south) -- ++(0, -0.6) coordinate (torso);
+        \draw[thick, draw=black!80] (torso) -- ++(-0.3, -0.5);
+        \draw[thick, draw=black!80] (torso) -- ++(0.3, -0.5);
+        \draw[thick, draw=black!80] (admin.south) ++(0, -0.15) -- ++(-0.4, 0.1);
+        \draw[thick, draw=black!80] (admin.south) ++(0, -0.15) -- ++(0.4, 0.1);
         \node[font=\sffamily\small\bfseries] at (-2.0, -6.6) {Administrator};
         
         % Firewall Device Actor (Server Rack Representation)
         \node[firewallbox] (fw) at (12.0, -5.2) {};
-        \draw[thick, draw=orange!70!black] (11.65, -5.05) -- (12.35, -5.05);
-        \draw[thick, draw=orange!70!black] (11.65, -5.35) -- (12.35, -5.35);
-        \fill[orange!70!black] (11.8, -5.05) circle (0.04cm);
-        \fill[orange!70!black] (11.8, -5.35) circle (0.04cm);
+        \draw[thick, draw=black!80] (11.65, -5.05) -- (12.35, -5.05);
+        \draw[thick, draw=black!80] (11.65, -5.35) -- (12.35, -5.35);
+        \fill[black!80] (11.8, -5.05) circle (0.04cm);
+        \fill[black!80] (11.8, -5.35) circle (0.04cm);
         \node[font=\sffamily\small\bfseries] at (12.0, -6.0) {FortiGate Firewall};
         
         % Use Cases inside boundary
@@ -498,7 +683,7 @@ The interaction boundaries between the system operator (network administrator), 
         \draw[include] (uc4) -- node[right, fill=gray!5, inner sep=1.5pt] {\footnotesize\textit{<<extend>>}} (uc2);
         
     \end{tikzpicture}
-    \caption{UML Use Case Diagram representing Operator Interactions and System Boundaries}
+    \caption{Use Case Diagram: Operator Interactions}
     \label{fig:uml_use_case}
 \end{figure}
 
@@ -507,23 +692,23 @@ The structural design of the Python backend is modeled in the UML Class Diagram 
 \begin{figure}[H]
     \centering
     \begin{tikzpicture}[
-        scale=0.85, every node/.style={transform shape},
-        classbox/.style={rectangle, draw=blue!70!black, thick, fill=blue!3, text width=5.7cm, align=left, rounded corners, font=\sffamily\scriptsize, inner sep=6pt},
-        dataclassbox/.style={rectangle, draw=purple!70!black, thick, fill=purple!3, text width=5.7cm, align=left, rounded corners, font=\sffamily\scriptsize, inner sep=6pt},
-        arrow/.style={->, thick, draw=black, >=stealth},
-        dependency/.style={->, thick, dashed, draw=black, >=stealth},
-        composition/.style={{Diamond[black]}-, thick, draw=black, >=stealth}
+        scale=0.60, every node/.style={transform shape},
+        classbox/.style={rectangle, draw=black!80, thick, fill=gray!5, text width=5.7cm, align=left, rounded corners, font=\sffamily\scriptsize, inner sep=6pt},
+        dataclassbox/.style={rectangle, draw=black!80, thick, fill=gray!10, text width=5.7cm, align=left, rounded corners, font=\sffamily\scriptsize, inner sep=6pt},
+        arrow/.style={->, thick, draw=black!80, >=stealth},
+        dependency/.style={->, thick, dashed, draw=black!80, >=stealth},
+        composition/.style={{Diamond[black]}-, thick, draw=black!80, >=stealth}
         ]
         
         % Class 1: AgentSession
         \node[classbox] (session) at (0, 0) {
             {\centering\textbf{AgentSession}\par}\vspace{0.08cm}
-            {\color{blue!30!black}\rule{\linewidth}{0.4pt}}\\[0.12cm]
+            {\color{black!50}\rule{\linewidth}{0.4pt}}\\[0.12cm]
             - conversation: list\\
             - \_pending: ConfirmationState\\
             - ctx: SessionContext\\
             - snapshots: SnapshotStore\\[0.12cm]
-            {\color{blue!30!black}\rule{\linewidth}{0.4pt}}\\[0.12cm]
+            {\color{black!50}\rule{\linewidth}{0.4pt}}\\[0.12cm]
             + process(user\_input: str): AgentResponse\\
             + has\_pending(): bool\\
             + \_route(user\_input: str): AgentResponse
@@ -532,7 +717,7 @@ The structural design of the Python backend is modeled in the UML Class Diagram 
         % Class 2: RawIntentSchema
         \node[dataclassbox] (nlu) at (7.2, 3.2) {
             {\centering\guillemotleft dataclass\guillemotright\\ \textbf{RawIntentSchema}\par}\vspace{0.08cm}
-            {\color{purple!30!black}\rule{\linewidth}{0.4pt}}\\[0.12cm]
+            {\color{black!50}\rule{\linewidth}{0.4pt}}\\[0.12cm]
             + intent: NLUIntentType\\
             + confidence: NLUConfidence\\
             + policy\_ids: List[int]\\
@@ -541,14 +726,14 @@ The structural design of the Python backend is modeled in the UML Class Diagram 
             + policy\_filter: dict\\
             + raw\_input: str\\
             + missing\_fields: List[str]\\[0.12cm]
-            {\color{purple!30!black}\rule{\linewidth}{0.4pt}}\\[0.12cm]
+            {\color{black!50}\rule{\linewidth}{0.4pt}}\\[0.12cm]
             + is\_complete(): bool
         };
         
         % Class 3: GroundedIntentSchema
         \node[dataclassbox] (grounder) at (7.2, -3.2) {
             {\centering\guillemotleft dataclass\guillemotright\\ \textbf{GroundedIntentSchema}\par}\vspace{0.08cm}
-            {\color{purple!30!black}\rule{\linewidth}{0.4pt}}\\[0.12cm]
+            {\color{black!50}\rule{\linewidth}{0.4pt}}\\[0.12cm]
             + raw: RawIntentSchema\\
             + policy\_ids: List[int]\\
             + current\_state: dict\\
@@ -558,16 +743,16 @@ The structural design of the Python backend is modeled in the UML Class Diagram 
             + noop\_message: str\\
             + issues: List[GroundingIssue]\\
             + computed: dict\\[0.12cm]
-            {\color{purple!30!black}\rule{\linewidth}{0.4pt}}\\[0.12cm]
+            {\color{black!50}\rule{\linewidth}{0.4pt}}\\[0.12cm]
             + error\_messages(): List[str]
         };
         
         % Class 4: SnapshotStore
         \node[classbox] (snapshot) at (14.4, 3.2) {
             {\centering\textbf{SnapshotStore}\par}\vspace{0.08cm}
-            {\color{blue!30!black}\rule{\linewidth}{0.4pt}}\\[0.12cm]
+            {\color{black!50}\rule{\linewidth}{0.4pt}}\\[0.12cm]
             - \_snapshots: deque\\[0.12cm]
-            {\color{blue!30!black}\rule{\linewidth}{0.4pt}}\\[0.12cm]
+            {\color{black!50}\rule{\linewidth}{0.4pt}}\\[0.12cm]
             + capture(tool, resource, state, desc, fn): str\\
             + list(): List[OperationSnapshot]\\
             + get(op\_id: str): OperationSnapshot\\
@@ -578,11 +763,11 @@ The structural design of the Python backend is modeled in the UML Class Diagram 
         % Class 5: PolicyUpdateExecutor
         \node[classbox] (executor) at (14.4, -3.2) {
             {\centering\textbf{PolicyUpdateExecutor}\par}\vspace{0.08cm}
-            {\color{blue!30!black}\rule{\linewidth}{0.4pt}}\\[0.12cm]
+            {\color{black!50}\rule{\linewidth}{0.4pt}}\\[0.12cm]
             - \_get: function\\
             - \_update: function\\
             - \_READONLY\_FIELDS: set\\[0.12cm]
-            {\color{blue!30!black}\rule{\linewidth}{0.4pt}}\\[0.12cm]
+            {\color{black!50}\rule{\linewidth}{0.4pt}}\\[0.12cm]
             + execute(intent: UpdateIntent): ExecResult\\
             - \_fetch(policy\_id: int): dict\\
             - \_check\_noops(current: dict, deltas: list)\\
@@ -594,14 +779,17 @@ The structural design of the Python backend is modeled in the UML Class Diagram 
         \draw[dependency] (session) -- (grounder);
         \draw[dependency] (grounder) -- (executor);
         \draw[dependency] (executor) -- (snapshot);
-        \draw[composition] (session.north) -- ++(0, 2.4) -| (snapshot.north);
+        % Composition arrow routed ABOVE all boxes to avoid passing through them
+        \draw[composition] (session.north) -- ++(0, 6.8) -| (snapshot.north);
         
     \end{tikzpicture}
-    \caption{UML Class Diagram representing structural relationships of Python Backend Classes}
+    \caption{Class Diagram: Python Backend Structure}
     \label{fig:uml_class_diagram}
 \end{figure}
 
-The `AgentSession` context class acts as the central coordinator, orchestrating transitions between the conversational NLU layers and the deterministic components. The dynamic NLU parsing yields `RawIntentSchema` instances, which are immediately directed to the grounding engine to produce verified `GroundedIntentSchema` structures. Finally, mutations are managed by the `PolicyUpdateExecutor` coupled with the transactional recovery capabilities of the `SnapshotStore` to ensure fail-safe operation on the physical firewall appliance.
+The \texttt{AgentSession} context class acts as the central coordinator, orchestrating transitions between the conversational NLU layers and the deterministic components. The dynamic NLU parsing yields \texttt{RawIntentSchema} instances, which are immediately directed to the grounding engine to produce verified \texttt{GroundedIntentSchema} structures. Finally, mutations are managed by the \texttt{PolicyUpdateExecutor} coupled with the transactional recovery capabilities of the \texttt{SnapshotStore} to ensure fail-safe operation on the physical firewall appliance.
 
 \section{Chapter Conclusion}
-This chapter has detailed the architectural design, ingestion pipelines, and structural specifications of the hybrid network orchestration prototype. By segregating the system into a probabilistic interpretation plane and a deterministic control plane, we enforce a strict trust boundary. We have modeled the NLP \& RAG enrichment stages, established functional diagrams using UML Use Cases, defined the detailed software components using class models, and mathematically formulated the safety gates that enforce corporate security postures. These designs establish a highly precise, verifiable blueprint for secure network automation.
+This chapter has presented the complete architectural design of the hybrid AI-driven FortiGate orchestration platform. Beginning with a structured requirements specification, we established the functional and non-functional constraints that govern system safety and operational predictability. We then progressively detailed the multi-layered architecture, tracing the flow of a network management intent from unstructured natural language input through the Probabilistic Interpretation Plane, across the hard Trust Boundary, and into the Deterministic Control Plane.
+
+Key architectural contributions include the NLP and RAG ingestion pipeline, which grounds AI inference in live device documentation; the entity grounding algorithm, which reconciles conversational ambiguity with physical FortiOS object identifiers; the multi-tiered compliance engine, which enforces organizational security postures before any mutation is authorized; and the transactional rollback lifecycle, which guarantees configuration integrity even under failure conditions. The Architectural Sequence Trace formalized the interaction of these subsystems, demonstrating that the system deliberately constrains AI autonomy within the probabilistic plane while preserving deterministic authority in the execution layer. This design is a foundational blueprint for the implementation and experimental validation presented in Chapter 4.
