@@ -6,7 +6,6 @@
   [![FortiOS](https://img.shields.io/badge/FortiOS-REST_API-E31837?style=for-the-badge&logo=fortinet&logoColor=white)](https://fortinet.com)
   [![Mistral](https://img.shields.io/badge/Mistral_AI-NLU_Engine-F24E1E?style=for-the-badge)](https://mistral.ai)
   [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](#license)
-  [![CI](https://img.shields.io/github/actions/workflow/status/RhayemSaidi/FortiGate-AI-Agent/pytest.yml?style=for-the-badge&label=Tests)](https://github.com/RhayemSaidi/FortiGate-AI-Agent/actions)
 </div>
 
 <br/>
