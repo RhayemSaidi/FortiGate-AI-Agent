@@ -5,6 +5,7 @@ __pycache__/
 *.conf
 venv/
 env/
+.env
 .vscode/
 *.pdf
 rag/chroma_db/

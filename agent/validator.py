@@ -226,8 +226,12 @@ def validate_create_policy(params: dict) -> ValidationResult:
 
     if action == "accept":
         if srcaddr == "all" and dstaddr == "all" and service == "ALL":
-            result.add_warning("SECURITY RISK: Allows ALL traffic from ALL sources to ALL destinations.")
-            result.add_suggestion("Specify exact addresses and restrict to required services.")
+            result.add_error(
+                "COMPLIANCE BLOCK [POL-001]: ANY→ANY ACCEPT on ALL services is forbidden. "
+                "This configuration is equivalent to disabling the firewall. "
+                "Specify exact source/destination addresses and restrict to required services only."
+            )
+            return result
         elif srcaddr == "all" and service == "ALL":
             result.add_warning("SECURITY RISK: Allows all traffic from any source on all services.")
         if service in ("SSH", "RDP", "TELNET") and srcaddr == "all":

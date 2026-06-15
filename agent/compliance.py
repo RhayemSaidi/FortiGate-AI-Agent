@@ -447,3 +447,4 @@ def run_compliance_check(scope: str = "full") -> ComplianceReport:
         f'"errors":{len(report.errors)}'
     )
     return report
+

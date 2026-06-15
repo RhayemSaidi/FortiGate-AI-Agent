@@ -24,7 +24,8 @@ def init_state() -> None:
         "pending":      False,
         "pending_text": "",
         "fg_connected": None,
-        "fg_info":      {},       # hostname, version, uptime, serial
+        "fg_info":      {},       # hostname, version, serial, model
+        "fg_boot_time": None,     # raw epoch seconds of last reboot (for live uptime)
         "fg_resources": {},       # cpu, memory (refreshed on demand)
         "fg_counts":    {},       # policy_count, interface_count
         "last_action":  "",       # last executed operation label
@@ -61,17 +62,34 @@ def check_fortigate_connection() -> bool:
         r = get_system_status()
         if not isinstance(r, dict):
             r = {}
+            
+        if r.get("status") == "error":
+            raise Exception(r.get("error", "API Error"))
         
         # FortiGate returns system status inside 'results'
         results = r.get("results", r)
 
+        # Fetch raw reboot time — store as epoch seconds so sidebar can compute live uptime
+        import time as _time
+        boot_epoch = None
+        try:
+            from api.client import get as api_get
+            state_resp = api_get("/monitor/web-ui/state")
+            if isinstance(state_resp, dict):
+                state_res = state_resp.get("results", state_resp)
+                last_reboot_ms = state_res.get("utc_last_reboot")
+                if last_reboot_ms:
+                    boot_epoch = int(last_reboot_ms) / 1000.0
+        except Exception:
+            pass
+
         st.session_state.fg_connected = True
+        st.session_state.fg_boot_time = boot_epoch
         st.session_state.fg_info = {
             "hostname": results.get("hostname", "FortiGate"),
             "version":  r.get("version") or results.get("version", ""),
             "serial":   r.get("serial") or results.get("serial", "N/A"),
             "model":    results.get("model_name") or results.get("model", ""),
-            "uptime":   _format_uptime(results.get("uptime", r.get("uptime", 0))) or "N/A",
         }
 
         # Best-effort: fetch resources and counts (non-fatal if unavailable)

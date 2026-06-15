@@ -48,8 +48,14 @@ def _handle(answer: str) -> None:
         st.session_state.pending      = True
         st.session_state.pending_text = response.text
     else:
+        was_pending = st.session_state.get("pending", False)
         st.session_state.pending      = False
         st.session_state.pending_text = ""
+        
+        # If an operation was just confirmed and executed, sync the device counts
+        if was_pending and response.kind == ResponseKind.ANSWER:
+            from ui.utils.state import check_fortigate_connection
+            check_fortigate_connection()
 
     st.session_state.input_key += 1
     st.rerun()

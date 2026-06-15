@@ -18,9 +18,15 @@ for p in (_THIS_DIR, _AGENT_DIR):
 import streamlit as st
 import streamlit.components.v1 as components
 
+try:
+    from PIL import Image
+    _icon = Image.open(os.path.join(_THIS_DIR, "ui", "assets", "logo_trans.png"))
+except Exception:
+    _icon = "🛡️"
+
 st.set_page_config(
     page_title="FortiGate AI Agent",
-    page_icon="🛡️",
+    page_icon=_icon,
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -151,8 +157,14 @@ if user_input and user_input.strip():
         st.session_state.pending      = True
         st.session_state.pending_text = response.text
     elif response.kind in (ResponseKind.CANCELLED, ResponseKind.ANSWER):
+        was_pending = st.session_state.get("pending", False)
         st.session_state.pending      = False
         st.session_state.pending_text = ""
+        
+        # If an operation was just confirmed and executed, sync the device counts
+        if was_pending and response.kind == ResponseKind.ANSWER:
+            from ui.utils.state import check_fortigate_connection
+            check_fortigate_connection()
 
     st.session_state.input_key += 1
     st.rerun()

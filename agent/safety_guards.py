@@ -510,3 +510,4 @@ def validate_reboot_system(params: dict) -> ValidationResult:
         "The agent will temporarily lose connection during the reboot cycle (typically 2-5 minutes)."
     )
     return result
+

@@ -340,8 +340,10 @@ def _build_llms() -> Tuple[Any, Any]:
 
 
 def _invoke(llm: Any, messages: list, retries: int = 3) -> Any:
+    import time
     for attempt in range(retries):
         try:
+            time.sleep(3.0)
             return llm.invoke(messages)
         except Exception as exc:
             s = str(exc).lower()
@@ -565,6 +567,7 @@ def _format_tool_result(
             f"- {lang_rule}\n"
             "- [FORMATTING RULE]: DO NOT TRANSLATE tool outputs. Keep table headers and data "
             "(like 'ID', 'Name', 'Action', 'Src Intf') EXACTLY as provided by the system.\n"
+            "- [CRITICAL FORMATTING RULE]: You MUST include ALL rows of the table. Do NOT skip or summarize any rows.\n"
             "- Plain text only. No emojis. No markdown headers.\n"
             "- ASCII tables (| and -) for tabular data only.\n"
             "- Be concise — 2–4 sentences unless showing a table.\n"
@@ -989,6 +992,11 @@ class AgentSession:
         self._pending: Optional[ConfirmationState] = None
         self.ctx:      SessionContext              = SessionContext()
         self.snapshots: SnapshotStore              = SnapshotStore()
+        # Each new session starts with zero snapshots.
+        # Historical snapshots from previous sessions are irrelevant for rollback
+        # (the pre-states they reference may no longer be valid).
+        self.snapshots._snapshots.clear()
+        self.snapshots._save_to_disk()
 
     @property
     def has_pending(self) -> bool:
@@ -1750,6 +1758,12 @@ class AgentSession:
                 question="What operation did you want to perform?",
                 expected_field="intent",
             )
+            self.ctx.set_incomplete_intent(
+                original_input=schema.raw_input,
+                missing_fields=["intent"],
+                collected={},
+                intent_type="ambiguous",
+            )
             return AgentResponse(
                 text=(
                     "I am not sure what you would like to do.\n\n"
@@ -1772,8 +1786,22 @@ class AgentSession:
                 )
                 lines.append(f"  {i}. {desc}")
             lines += ["", "Please rephrase to specify which you mean."]
+            self.ctx.set_incomplete_intent(
+                original_input=schema.raw_input,
+                missing_fields=["clarification"],
+                collected={},
+                intent_type="ambiguous",
+            )
             return AgentResponse(text="\n".join(lines), kind=ResponseKind.ANSWER)
 
+        # It's an LLM-generated ambiguity message. We MUST set incomplete state 
+        # so the user's reply gets synthesised with the original input.
+        self.ctx.set_incomplete_intent(
+            original_input=schema.raw_input,
+            missing_fields=["clarification"],
+            collected={},
+            intent_type="ambiguous",
+        )
         return AgentResponse(text=raw_msg, kind=ResponseKind.ANSWER)
 
     def _handle_incomplete(self, schema: RawIntentSchema) -> AgentResponse:
@@ -1973,6 +2001,7 @@ class AgentSession:
         self.ctx.record_write(pc.tool_name, str(pc.tool_args.get("policy_id", "")))
         self._record(pc.original_input, answer)
         self._pending = None
+        
         return AgentResponse(
             text=full_text, tool_called=pc.tool_name, kind=ResponseKind.ANSWER
         )

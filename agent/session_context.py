@@ -353,16 +353,17 @@ class SessionContext:
 
         if field in ("srcintf", "dstintf", "interface_name"):
             return bool(_INTF.match(stripped))
-        if field in ("policy_id", "neighbor_id"):
-            return bool(_PID.match(stripped)) or (
-                bool(_PNAM.match(stripped)) and len(tokens) == 1
-            )
+        if field in ("policy_id", "neighbor_id", "policy_name", "identifier", "name"):
+            clean_str = stripped.lower().replace("policy", "").replace("id", "").strip()
+            if bool(_PID.match(clean_str)):
+                return True
+            if len(tokens) <= 3:
+                return True
+
         if field == "action":
             return stripped.lower() in _KNOWN_ACTIONS
         if field == "service":
             return any(s in user_input.lower() for s in _KNOWN_SERVICES)
-        if field == "name":
-            return len(tokens) == 1 and _PNAM.match(stripped) is not None
         if field == "subnet":
             return bool(re.match(
                 r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(/\d{1,2})?$', stripped
@@ -370,7 +371,8 @@ class SessionContext:
         if field == "move_action":
             return stripped.lower() in ("before", "after", "avant", "après")
 
-        return len(tokens) <= 4
+        # Fallback for minor field misspellings by the LLM
+        return len(tokens) <= 3
 
     # ── Helpers ────────────────────────────────────────────
 

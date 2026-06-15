@@ -50,19 +50,63 @@ def render_sidebar() -> None:
 
 # ── Brand ─────────────────────────────────────────────────────────────────────
 def _brand() -> None:
+    import base64
+    import os
+    logo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "logo_trans.png")
+    b64_img = ""
+    try:
+        with open(logo_path, "rb") as f:
+            b64_img = base64.b64encode(f.read()).decode("utf-8")
+    except Exception:
+        pass
+
+    img_html = f'<img src="data:image/png;base64,{b64_img}" style="width:2.4rem;height:2.4rem;margin-right:0.8rem;object-fit:contain">' if b64_img else ''
+
     st.markdown(
-        """
-        <div style="padding:1.4rem 1rem 0">
-          <div style="font-size:0.6rem;font-weight:500;letter-spacing:0.2em;
-                      text-transform:uppercase;color:#555555;margin-bottom:0.35rem">
-            FortiGate
-          </div>
-          <div style="font-size:1.15rem;font-weight:300;color:#dddddd;
-                      letter-spacing:-0.01em;line-height:1">
-            AI Agent
+        f"""
+        <div style="padding:1.4rem 1rem 0; display:flex; align-items:center;">
+          {img_html}
+          <div>
+            <div style="font-size:0.6rem;font-weight:500;letter-spacing:0.2em;
+                        text-transform:uppercase;color:#555555;margin-bottom:0.2rem">
+              FortiGate
+            </div>
+            <div style="font-size:1.15rem;font-weight:300;color:#dddddd;
+                        letter-spacing:-0.01em;line-height:1">
+              AI Agent
+            </div>
           </div>
         </div>
         """,
+        unsafe_allow_html=True,
+    )
+
+
+# ── Live uptime clock (re-runs every 1 second automatically) ─────────────────
+@st.fragment(run_every=1)
+def _uptime_clock() -> None:
+    import time as _time
+    boot_epoch = st.session_state.get("fg_boot_time")
+    connected  = st.session_state.get("fg_connected")
+    if not connected or not boot_epoch:
+        st.markdown(
+            '<div style="font-size:0.78rem;color:#cccccc;font-weight:300">—</div>',
+            unsafe_allow_html=True,
+        )
+        return
+    elapsed = int(_time.time() - boot_epoch)
+    d = elapsed // 86400
+    h = (elapsed % 86400) // 3600
+    m = (elapsed % 3600) // 60
+    s = elapsed % 60
+    if d > 0:
+        txt = f"{d}d {h}h {m}m"
+    elif h > 0:
+        txt = f"{h}h {m}m {s}s"
+    else:
+        txt = f"{m}m {s}s"
+    st.markdown(
+        f'<div style="font-size:0.78rem;color:#cccccc;font-weight:300;white-space:nowrap">{txt}</div>',
         unsafe_allow_html=True,
     )
 
@@ -74,10 +118,9 @@ def _device_panel() -> None:
     resources = st.session_state.get("fg_resources", {})
     counts    = st.session_state.get("fg_counts", {})
 
-    hostname = fg_info.get("hostname", "—") if connected else "—"
-    model    = fg_info.get("model",    "—") if connected else "—"
-    uptime   = fg_info.get("uptime",   "—") if connected else "—"
-    serial   = fg_info.get("serial",   "—") if connected else "—"
+    hostname  = fg_info.get("hostname", "—") if connected else "—"
+    model     = fg_info.get("model",    "—") if connected else "—"
+    serial    = fg_info.get("serial",   "—") if connected else "—"
 
     if connected is True:
         dot, dot_color, label, label_color = "●", "#ffffff", "ONLINE", "#ffffff"
@@ -89,7 +132,6 @@ def _device_panel() -> None:
     st.markdown(
         f"""
         <div style="padding:0 1rem">
-
           <!-- Status row -->
           <div style="display:flex;align-items:center;justify-content:space-between;
                       margin-bottom:1rem">
@@ -101,18 +143,32 @@ def _device_panel() -> None:
               {label}
             </span>
           </div>
-
-          <!-- Device info grid -->
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.7rem 0.5rem">
-            {_info_cell("HOST", hostname)}
-            {_info_cell("MODEL", model)}
-            {_info_cell("SERIAL", serial, mono=True)}
-            {_info_cell("UPTIME", uptime)}
-          </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
+
+    # Use st.columns for both rows to guarantee perfect alignment
+    col1, col2 = st.columns(2, gap="small")
+    with col1:
+        st.markdown(f'<div style="padding-left:1rem">{_info_cell("HOST", hostname)}</div>', unsafe_allow_html=True)
+    with col2:
+        st.markdown(f'<div style="padding-left:0.2rem">{_info_cell("MODEL", model)}</div>', unsafe_allow_html=True)
+
+    st.markdown('<div style="height:0.7rem"></div>', unsafe_allow_html=True)
+
+    col3, col4 = st.columns(2, gap="small")
+    with col3:
+        st.markdown(f'<div style="padding-left:1rem">{_info_cell("SERIAL", serial, mono=True)}</div>', unsafe_allow_html=True)
+    with col4:
+        st.markdown(
+            '<div style="padding-left:0.2rem">'
+            '<div style="font-size:0.58rem;letter-spacing:0.1em;color:#555555;'
+            'text-transform:uppercase;margin-bottom:0.2rem">UPTIME</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        _uptime_clock()
 
     # Resource bars
     cpu = resources.get("cpu", 0) if connected else 0
@@ -198,8 +254,11 @@ def _session_panel() -> None:
     last_act   = st.session_state.get("last_action", "")
 
     try:
-        from snapshot import SnapshotStore
-        snapshot_count = len(SnapshotStore()._snapshots)
+        agent = st.session_state.get("agent")
+        if agent and hasattr(agent, "snapshots"):
+            snapshot_count = len(agent.snapshots._snapshots)
+        else:
+            snapshot_count = 0
     except Exception:
         snapshot_count = 0
 
@@ -254,7 +313,7 @@ def _audit_panel() -> None:
     st.markdown(
         '<div style="padding:0 1rem;font-size:0.6rem;font-weight:500;'
         'letter-spacing:0.14em;text-transform:uppercase;color:#666666;'
-        'margin-bottom:0.5rem">Recent Audit Chain</div>',
+        'margin-bottom:0.5rem">Recent Activity</div>',
         unsafe_allow_html=True,
     )
     

@@ -227,6 +227,10 @@ def _build_read_plan_deterministic(
     # First try to extract a service name from the text
     svc = _extract_service_name(t)
 
+    # Prevent "list all policies" from being treated as a search for service "ALL"
+    if svc == "ALL" and re.search(r'\b(list|show|get|display)\b(?:\s+\w+){0,4}\s+all\s+polic\w*\b', t, re.I):
+        svc = None
+
     if svc:
         # Service name found — now check if user is asking to filter by it
         _SERVICE_FILTER_PATTERNS = [

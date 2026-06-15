@@ -10,30 +10,25 @@ services:
       - FORTIGATE_IP=${FORTIGATE_IP}
       - API_TOKEN=${API_TOKEN}
       - MISTRAL_API_KEY=${MISTRAL_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
       - VERIFY_SSL=${VERIFY_SSL:-false}
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
     volumes:
       - ./logs:/app/logs
     depends_on:
-      chroma:
-        condition: service_healthy
+      - chroma
     restart: unless-stopped
     networks:
       - fortigate-net
 
   chroma:
     image: chromadb/chroma:latest
-    container_name: fortigate-chroma
+    container_name: chroma
     ports:
       - "8000:8000"
     volumes:
       - chroma_data:/chroma/.chroma
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
-      interval: 5s
-      timeout: 3s
-      retries: 3
     restart: unless-stopped
     networks:
       - fortigate-net

@@ -541,3 +541,4 @@ def execute_rollback(store: SnapshotStore, op_id: Optional[str] = None) -> Rollb
         )
 
     return result
+

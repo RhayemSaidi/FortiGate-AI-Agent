@@ -6,11 +6,18 @@
   [![FortiOS](https://img.shields.io/badge/FortiOS-REST_API-E31837?style=for-the-badge&logo=fortinet&logoColor=white)](https://fortinet.com)
   [![Mistral](https://img.shields.io/badge/Mistral_AI-NLU_Engine-F24E1E?style=for-the-badge)](https://mistral.ai)
   [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](#license)
+  [![CI](https://img.shields.io/github/actions/workflow/status/RhayemSaidi/FortiGate-AI-Agent/pytest.yml?style=for-the-badge&label=Tests)](https://github.com/RhayemSaidi/FortiGate-AI-Agent/actions)
 </div>
 
 <br/>
 
 ## 1. Project Description
+
+<div align="center">
+  <!-- Place your Streamlit dashboard screenshot here -->
+  <img src="docs/images/dashboard_preview.png" alt="FortiGate AI Agent Dashboard" width="800"/>
+</div>
+<br/>
 
 **FortiGate AI Agent** is an enterprise-grade orchestration platform that allows network administrators to manage, query, and audit FortiGate firewalls using natural language. 
 
@@ -28,6 +35,7 @@ This ensures zero risk of LLM hallucination leading to infrastructure misconfigu
 - **Active Compliance Enforcement**: Prevents dangerous configurations (e.g., implicit `ALL to ALL` rules, unencrypted management protocols) before they hit the firewall.
 - **RAG-Powered Knowledge Base**: Instant answers to FortiOS troubleshooting and architecture questions using a localized vector database containing official documentation.
 - **Cryptographic Audit Trail**: All operations log to a tamper-evident, SHA-256 hashed audit file.
+- **Containerized Deployment**: Ready for immediate production rollout via Docker Compose.
 
 ---
 
@@ -296,7 +304,7 @@ All operations are permanently logged to `logs/audit.jsonl`.
 - **Create Rollback Support**: Expanding `snapshot.py` to support `OperationType.CREATE` for automated deletion of rolled-back resources.
 - **REST API Resiliency**: Implementing `urllib3` retry adapters for exponential backoff during high network latency.
 - **Role-Based Access Control (RBAC)**: Enforcing strict user privileges matching FortiOS admin profiles.
-- **Dockerization**: Packaging the application stack into an orchestrated Docker Compose environment.
+- **SIEM Integration**: Forwarding audit logs to external platforms for automated incident response.
 
 ---
 

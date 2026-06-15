@@ -689,6 +689,7 @@ def interpret(
         response = None
         for attempt in range(retries):
             try:
+                time.sleep(3.0)
                 response = llm_plain.invoke(messages)
                 last_exc = None
                 break
