@@ -204,7 +204,7 @@ The NLU interpreter forces Mistral to respond strictly in JSON. The Grounding pi
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/RhayemSaidi/FortiGate-AI-Agent.git
+   git clone https://github.com/Abderrahmen-Saidi/FortiGate-AI-Agent.git
    cd FortiGate-AI-Agent
    ```
 2. **Install dependencies:**
@@ -265,11 +265,9 @@ python agent/agent.py
 **User:** Move policy 4 before 3.  
 **Agent:** 
 ```text
-=======================================================
   CONFIRMATION REQUIRED
-=======================================================
+
   REORDER: move policy 4 before policy 3
-=======================================================
   Type 'yes' to confirm or 'no' to cancel.
 ```
 **User:** yes  
@@ -331,20 +329,8 @@ When deploying to a production enterprise environment:
 
 ---
 
-## 27. Contributing
-
-Contributions are welcome to expand the REST module coverage (e.g., IPsec VPN creation, SD-WAN rules). Please ensure all new modules are fully mapped in `nlu_schema.py` and strict rollback functions are provided in `snapshot.py`.
-
----
-
-## 28. License
-
-Distributed under the MIT License. See `LICENSE` for more information.
-
----
-
 ## 29. Author / Credits
 
 Developed as a capstone engineering project (PFE).  
-**Architecture & Implementation**: [Rhayem Saidi](https://github.com/RhayemSaidi)  
+**Architecture & Implementation**: [Abderrahmen Saidi](https://github.com/Abderrahmen-Saidi)  
 **Powered By**: Mistral AI, Fortinet, Streamlit, LangChain
